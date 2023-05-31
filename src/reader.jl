@@ -1,5 +1,3 @@
-include("bwt.jl")
-
 # index your genome so that information is available
 struct ContigInfo
     NAME::String
