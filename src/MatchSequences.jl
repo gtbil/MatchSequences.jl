@@ -8,7 +8,7 @@ include("bwt.jl")
 include("fm.jl")
 include("reader.jl")
 
-function main(basename = "../data/GhirsutumCoker_698_v1.0.fasta")
+function main(basename = "./test/test.fasta")
     # get the information for this genome
     genome_info = read_fai(basename * ".fai")
     gap_list = map(i -> i.NAME, genome_info)
@@ -46,6 +46,7 @@ function main(basename = "../data/GhirsutumCoker_698_v1.0.fasta")
         i += 1
     end
 
+    return 1
 end
 
 export main

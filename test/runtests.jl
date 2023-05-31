@@ -2,7 +2,7 @@ using MatchSequences
 using Test
 
 @testset "MatchSequences.jl" begin
-    # Write your tests here.
+    @test MatchSequences.main("./test.fasta") == 0
 end
 
 #=
