@@ -27,9 +27,9 @@ end
 # pretty print an FMIndex
 function Base.display(fm::FMIndex)
     σ = get_σ(fm)
-    display(String(Char.(σ[2:end])))
-    display(String(Char.(fm.L)))
-    println(Int64.(fm.SA))
+    display("σ  : " * String(Char.(σ[2:end])))
+    display("BWT: " * String(Char.(fm.L)))
+    println("SA : ", Int64.(fm.SA))
     for ch in σ
         println(Char.(ch), " ", Int64.(fm.T[ch]))
     end
