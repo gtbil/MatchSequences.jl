@@ -167,8 +167,9 @@ function reverseBwt(bw::Vector{UInt8})
     rowi = 1
 
     # create the output vector
-    t = similar(bw)
-    t[end] = 0x24
+    #t = similar(bw)
+    #t[end] = 0x24
+    t = Vector{UInt8}(undef, length(bw) - 1)
 
     # probably some way to unroll this loop
     for i in (length(bw)-1):-1:1

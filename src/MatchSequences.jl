@@ -46,7 +46,7 @@ function main(basename = "./test/test.fasta")
         i += 1
     end
 
-    return 1
+    return 0
 end
 
 export main

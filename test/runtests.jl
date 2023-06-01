@@ -1,8 +1,21 @@
-using MatchSequences
-using Test
+import MatchSequences
+import Test
+import Random
+import StatsBase
 
-@testset "MatchSequences.jl" begin
-    @test MatchSequences.main("./test.fasta") == 0
+Random.seed!(1234)
+
+DNA = convert(Vector{UInt8}, StatsBase.sample(['A', 'C', 'G', 'T'], 20))
+
+Test.@testset "MatchSequences.jl" begin
+    # test to make sure the test file runs OK on main
+    Test.@test MatchSequences.main("./test.fasta") == 0
+
+    # test that Sa and Bw methods for the bwt are the same
+    Test.@test MatchSequences.bwtViaBwm(DNA) == MatchSequences.bwtViaSa(DNA)
+
+    # and that they are reversible
+    Test.@test MatchSequences.reverseBwt(MatchSequences.bwtViaSa(DNA)) == DNA
 end
 
 #=
