@@ -64,6 +64,7 @@ function main(basename = "./test/test.fasta")
 
     # print the FM indexes
     display.(fms)
+    write_fm(fms[1], "fm1.test")
 
     return 0
 end

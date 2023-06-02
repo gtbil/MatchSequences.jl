@@ -35,6 +35,37 @@ function Base.display(fm::FMIndex)
     end
 end
 
+# write the FM objects to four separate files
+function write_fm(fm::FMIndex, basename::String)
+    σ = get_σ(fm)
+
+    # first write the alphabet
+    open(basename * ".a", "w") do f
+        write(f, σ)
+        write(f, UInt8('\n'))
+    end
+
+    # then the number of each char in the original string
+    open(basename * ".F", "w") do f
+        write(f, map(x -> Int(fm.F[x]), σ))
+        write(f, UInt8('\n'))
+    end
+    open(basename * ".L", "w") do f
+        write(f, fm.L)
+    end
+    open(basename * ".SA", "w") do f
+        for i in fm.SA
+            write(f, i)
+            write(f, "\n")
+        end
+    end
+    open(basename * ".T", "w") do f
+        for ch in σ
+            write(f, fm.T[ch])
+            write(f, "\n")
+        end
+    end
+end
 
 struct FMCheckpoints
     0
