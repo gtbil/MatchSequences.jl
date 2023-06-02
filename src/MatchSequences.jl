@@ -60,11 +60,14 @@ function main(basename = "./test/test.fasta")
         end
         # increment the original chromosome counter
         i += 1
+        # only do first chromosome when testing
+        break
     end
 
     # print the FM indexes
-    display.(fms)
-    write_fm(fms[1], "fm1.test")
+    # display.(fms)
+
+    write_fm(fms[1], basename)
 
     return 0
 end
