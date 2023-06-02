@@ -9,7 +9,7 @@ DNA = convert(Vector{UInt8}, StatsBase.sample(['A', 'C', 'G', 'T'], 20))
 
 Test.@testset "MatchSequences.jl" begin
     # test to make sure the test file runs OK on main
-    Test.@test MatchSequences.main("./test.fasta") == 0
+    Test.@test MatchSequences.main("./test.fasta") == MatchSequences.read_fm("./test.fasta")
 
     # test that Sa and Bw methods for the bwt are the same
     Test.@test MatchSequences.bwtViaBwm(DNA) == MatchSequences.bwtViaSa(DNA)
