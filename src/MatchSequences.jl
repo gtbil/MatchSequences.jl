@@ -66,7 +66,7 @@ function main(basename = "./test/test.fasta")
     # display.(fms)
 
     write_fm(fm, basename)
-    
+
     return fm
 end
 
