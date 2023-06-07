@@ -7,15 +7,25 @@ Random.seed!(1234)
 
 DNA = convert(Vector{UInt8}, StatsBase.sample(['A', 'C', 'G', 'T'], 20))
 
-Test.@testset "MatchSequences.jl" begin
-    # test to make sure the test file runs OK on main
-    Test.@test MatchSequences.main("./test.fasta") == MatchSequences.read_fm("./test.fasta")
+# run the test fasta
+fm_written = MatchSequences.main("./test.fasta")
+fm_read = MatchSequences.read_fm("./test.fasta")
 
+Test.@testset "MatchSequences.jl" begin
     # test that Sa and Bw methods for the bwt are the same
     Test.@test MatchSequences.bwtViaBwm(DNA) == MatchSequences.bwtViaSa(DNA)
 
     # and that they are reversible
     Test.@test MatchSequences.reverseBwt(MatchSequences.bwtViaSa(DNA)) == DNA
+
+    # check which parts of the stucts are equal
+    Test.@test fm_written.F == fm_read.F
+    Test.@test fm_written.L == fm_read.L
+    Test.@test fm_written.SA == fm_read.SA
+    Test.@test fm_written.T == fm_read.T
+    Test.@test fm_written.N == fm_read.N
+    Test.@test fm_written.C == fm_read.C
+    Test.@test fm_written.O == fm_read.O
 end
 
 #=

@@ -2,3 +2,4 @@
 *.ini
 /statprof
 fm1.test*
+alloc-profile.pb.gz

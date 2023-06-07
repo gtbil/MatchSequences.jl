@@ -12,22 +12,27 @@ function main(basename = "./test/test.fasta")
     # get the information for this genome
     genome_info = read_fai(basename * ".fai")
     gap_list = map(i -> i.NAME, genome_info)
-    gap_number = zeros(length(gap_list))
+    gap_number = zeros(Int, length(gap_list))
     
     # process one chromosome at a time
     contigs = Vector{Vector{UInt8}}()
-    contig_names = Vector{String}()
+    n = Vector{String}()
+    o = Vector{UInt64}()
     
     i = 1
     for chr in genome_info
-        #println(chr.NAME)
         seq_raw = read_chr(basename, chr)
         pos_Ns = find_Ns(seq_raw)
         gap_number[i] = length(pos_Ns)
 
         # save the contig names
-        append!(contig_names, map(x -> string(chr.NAME, ".", x), 1:(length(pos_Ns) + 1)))
-        if gap_number == 0
+        append!(n, repeat([chr.NAME],  gap_number[i] + 1))
+
+        push!(o, UInt64(0))
+
+        append!(o, cumsum(map(x -> x.second - x.first + 1, pos_Ns)))
+
+        if gap_number[i] == 0
             push!(contigs, seq_raw)
         else
             for contig in break_on_Ns(seq_raw, pos_Ns)
@@ -38,6 +43,14 @@ function main(basename = "./test/test.fasta")
         # increment the original chromosome counter
         i += 1
     end
+ 
+    # get the map that will also be stored in the FM index
+    c = map(x -> UInt64(length(x)), contigs)
+    c .+= collect(0:(length(c) - 1))
+    cumsum!(c, c)
+
+    # now make offsets into each chromosome -
+    # this is the gap size within each chromosome
 
     # make ONE FM index with all the sequences - put '$' between them
     seq = reduce((x, y) -> vcat(x, [UInt8('\$')], y), contigs)
@@ -47,13 +60,13 @@ function main(basename = "./test/test.fasta")
     bwt = bwtViaSa(seq, sa)
     f = rankBwt(bwt).tots
     t = tallyViaBwt(bwt)
-    fm = FMIndex(f, bwt, sa, t)
+    fm = FMIndex(f, bwt, sa, t, n, c, o)
 
     # print the FM indexes
     # display.(fms)
 
     write_fm(fm, basename)
-
+    
     return fm
 end
 

@@ -168,11 +168,13 @@ function tallyViaBwt(bw::Vector{UInt8})
     σ = sort(unique(bw))
 
     # create a vector of vec to store output
-    bt = [Vector{UInt64}(undef, length(bw)) for _ in σ]
+    tally = Dict{UInt8, Vector{UInt64}}(ch => Vector{UInt64}(undef, length(bw)) for ch in σ)
 
-    map!(x -> cumsum(bw .== x), bt, σ)
-
-    tally = Dict{UInt8, Vector{UInt64}}(σ[i] => bt[i] for i in eachindex(σ))
+    for ch in σ
+        #tally[ch] .= bw .== σ[ch]
+        #cumsum!(tally[ch], tally[ch])
+        cumsum!(tally[ch], bw .== ch)
+    end
 
     return tally
 end
