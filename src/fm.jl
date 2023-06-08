@@ -19,7 +19,8 @@ struct FMIndex
     # T is the tally on the number of times each character occurs
     # along L
     # The amount of space can be reduced substantially by messing with this term
-    T::Dict{UInt8, Vector{UInt64}}
+    # T::Dict{UInt8, Vector{UInt64}}
+    T::Matrix{UInt64}
 
     # The last thing you need a map between the original chromosomes
     # and parts of chromosomes, and the suffix array
@@ -35,6 +36,28 @@ struct FMIndex
 end
 
 global const σ = UInt8.(collect("\$ACGT"))
+global const σ_to_Col = Dict{UInt8, Int8}(ch => i for (i, ch) in enumerate(σ))
+global const SA_frac = 32
+global const T_frac = 128
+
+# write function to subset SA to SA_frac proportion and return
+function subset_SA(SA::Vector{UInt64})
+    str_length = length(SA)
+    return SA[1:SA_frac:((str_length ÷ SA_frac) * SA_frac + 1)]
+end
+
+# write function to subset SA to SA_frac proportion and return
+function subset_T(T::Matrix{UInt64})
+    str_length = size(T, 1)
+
+    T_new = Matrix{UInt64}(undef, (str_length - 1) ÷ T_frac + 1, length(σ))
+
+    for ch in σ
+        T_new[:,σ_to_Col[ch]] .= T[(1:T_frac:(((str_length - 1) ÷ T_frac) * T_frac + 1)), σ_to_Col[ch]]
+    end
+
+    return T_new
+end
 
 # pretty print an FMIndex
 function Base.display(fm::FMIndex)
@@ -48,21 +71,8 @@ function Base.display(fm::FMIndex)
     println("C  : ", Int64.(fm.C))
     println("O  : ", Int64.(fm.O))
     for ch in σ
-        println(Char.(ch), " ", Int64.(get(fm.T, ch, zeros(UInt64, length(fm.L)))))
+        println(Char.(ch), " ", Int64.(fm.T[:, σ_to_Col[ch]]))
     end
-end
-
-# convert t into a matrix for writing
-function tally_to_matrix(t::Dict{UInt8, Vector{UInt64}})
-    # create a matrix, then fill it with a view of each column
-    m = Matrix{UInt64}(undef, length(t[σ[1]]), length(σ))
-
-    for (i, ch) in enumerate(σ)
-        m[:, i] .= t[ch]
-    end
-
-    # then transpose 
-    return permutedims(m)
 end
 
 # write the FM objects to four separate files
@@ -75,12 +85,12 @@ function write_fm(fm::FMIndex, basename::String)
         DelimitedFiles.writedlm(io, map(x -> get(fm.F, x, UInt64(0)), σ))
     end
 
-    RawArray.rawrite(fm.L, basename * ".L")
+    RawArray.rawrite(fm.L, basename * ".L", compress = true)
 
     RawArray.rawrite(fm.SA, basename * ".SA", compress = true)
 
     # RawArray.rawrite(reduce(hcat, map(x -> get(fm.T, x, zeros(UInt64, length(fm.L))), σ)), basename * ".T", compress = true)
-    RawArray.rawrite(tally_to_matrix(fm.T), basename * ".T", compress = true)
+    RawArray.rawrite(fm.T, basename * ".T", compress = true)
 
     # finally write the last couple objects, that map the SA to contigs
     open(basename * ".N", "w") do io
@@ -102,14 +112,7 @@ function read_fm(basename::String)
     F = Dict{UInt8, UInt64}(σ .=> vec(DelimitedFiles.readdlm(basename * ".F", '\t', UInt64, '\n')))
     L = RawArray.raread(basename * ".L")
     SA = RawArray.raread(basename * ".SA")
-    #T.temp = Dict{UInt8, Vector{UInt64}}(s => v for s in σ, v in eachcol(RawArray.raread(basename * ".T")))
-    T_temp = transpose(RawArray.raread(basename * ".T"))
-
-    T = Dict{UInt8, Vector{UInt64}}(s => Vector{UInt64}(undef, length(SA)) for s in σ)
-
-    for (i, ch) in enumerate(σ)
-        T[ch] .= T_temp[:, i]
-    end
+    T = RawArray.raread(basename * ".T")
 
     N = vec(DelimitedFiles.readdlm(basename * ".N", '\t', String, '\n'))
     C = vec(DelimitedFiles.readdlm(basename * ".C", '\t', UInt64, '\n'))

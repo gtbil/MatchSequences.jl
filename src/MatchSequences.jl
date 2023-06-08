@@ -60,7 +60,8 @@ function main(basename = "./test/test.fasta")
     bwt = bwtViaSa(seq, sa)
     f = rankBwt(bwt).tots
     t = tallyViaBwt(bwt)
-    fm = FMIndex(f, bwt, sa, t, n, c, o)
+
+    fm = FMIndex(f, bwt, subset_SA(sa), subset_T(t), n, c, o)
 
     # print the FM indexes
     # display.(fms)

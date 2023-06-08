@@ -5,6 +5,9 @@ import SuffixArrays
 # probably need to define the alphabet somewhere,
 # and allow that to be an argument to these other functions
 
+global const σ = UInt8.(collect("\$ACGT"))
+global const σ_to_Col = Dict{UInt8, Int8}(ch => i for (i, ch) in enumerate(σ))
+
 # create a struct to hold the output of rankBwt
 struct Rank
     ranks::Vector{UInt64}
@@ -164,17 +167,14 @@ function tallyViaBwt(bw::Vector{UInt8})
     """
     Make tally table t from BWT string bw
     """
-    # get the alphabet, which is the unique characters in bw
-    σ = sort(unique(bw))
-
-    # create a vector of vec to store output
-    tally = Dict{UInt8, Vector{UInt64}}(ch => Vector{UInt64}(undef, length(bw)) for ch in σ)
+    # create a matrix to store output
+    tally = Matrix{UInt64}(undef, length(bw), length(σ))
 
     for ch in σ
-        #tally[ch] .= bw .== σ[ch]
-        #cumsum!(tally[ch], tally[ch])
-        cumsum!(tally[ch], bw .== ch)
+        tally[:,σ_to_Col[ch]] .= bw .== ch
     end
+
+    cumsum!(tally, tally; dims = 1)
 
     return tally
 end
