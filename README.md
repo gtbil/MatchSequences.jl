@@ -26,3 +26,16 @@ Pkg.activate("MatchSequences")
 # then to close
 Pkg.activate()
 ```
+
+To memory profile
+
+```julia
+using Profile
+using PProf
+
+Profile.Allocs.clear()
+
+Profile.Allocs.@profile sample_rate=0.01 main("../CokerTest/Coker312_A01.fasta")
+
+PProf.Allocs.pprof(from_c = FALSE)
+```
