@@ -3,3 +3,13 @@
 /statprof
 fm1.test*
 alloc-profile.pb.gz
+
+# ignore all of the files associated with the FM
+*.a
+*.C
+*.F
+*.L
+*.N
+*.O
+*.SA
+*.T
