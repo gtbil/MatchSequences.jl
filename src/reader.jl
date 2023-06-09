@@ -56,12 +56,15 @@ function read_chr(basename::String, contig_info::ContigInfo)::Vector{UInt8}
     
     # determine how many lines in the file to read
     for ptr in 1:num_lines
-        seq[((ptr - 1)*len_usual + 1):(ptr*len_usual)] .= convert(Vector{UInt8}, collect(readline(fp)))
+        # https://discourse.julialang.org/t/why-putting-partial-array-in-the-function-argument-and-update-it-actually-does-not-change-the-array/66754
+        #seq[((ptr - 1)*len_usual + 1):(ptr*len_usual)] .= convert(Vector{UInt8}, collect(readline(fp)))
+        readbytes!(fp, @view(seq[((ptr - 1)*len_usual + 1):(ptr*len_usual)]), contig_info.LINEBASES)
+        read(fp, 1)
     end
 
     # now deal with the last line
     if len_last != 0
-        seq[(num_lines*len_usual + 1):(num_lines*len_usual + len_last)] .= convert(Vector{UInt8}, collect(readline(fp)))
+        readbytes!(fp, @view(seq[(num_lines*len_usual + 1):(num_lines*len_usual + len_last)]), len_last)
     end
     
     close(fp)

@@ -85,12 +85,12 @@ function write_fm(fm::FMIndex, basename::String)
         DelimitedFiles.writedlm(io, map(x -> get(fm.F, x, UInt64(0)), σ))
     end
 
-    RawArray.rawrite(fm.L, basename * ".L", compress = true)
+    RawArray.rawrite(fm.L, basename * ".L", compress = false)
 
-    RawArray.rawrite(fm.SA, basename * ".SA", compress = true)
+    RawArray.rawrite(fm.SA, basename * ".SA", compress = false)
 
     # RawArray.rawrite(reduce(hcat, map(x -> get(fm.T, x, zeros(UInt64, length(fm.L))), σ)), basename * ".T", compress = true)
-    RawArray.rawrite(fm.T, basename * ".T", compress = true)
+    RawArray.rawrite(fm.T, basename * ".T", compress = false)
 
     # finally write the last couple objects, that map the SA to contigs
     open(basename * ".N", "w") do io

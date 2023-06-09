@@ -39,3 +39,8 @@ Profile.Allocs.@profile sample_rate=0.01 main("../CokerTest/Coker312_A01.fasta")
 
 PProf.Allocs.pprof(from_c = false)
 ```
+
+Enable the debugger:
+```julia
+ENV["JULIA_DEBUG"] = MatchSequences
+```

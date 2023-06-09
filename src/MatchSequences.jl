@@ -3,6 +3,8 @@ module MatchSequences
 import ProfileCanvas
 import BenchmarkTools
 import StatProfilerHTML
+import Logging
+import Dates
 
 include("bwt.jl")
 include("fm.jl")
@@ -19,6 +21,7 @@ function main(basename = "./test/test.fasta")
     n = Vector{String}()
     o = Vector{UInt64}()
     
+    Logging.@debug "DEBUG: Reading in the genome - " * Dates.format(Dates.now(), "HH:MM:SS.ssss")
     i = 1
     for chr in genome_info
         seq_raw = read_chr(basename, chr)
@@ -49,25 +52,35 @@ function main(basename = "./test/test.fasta")
     c .+= collect(0:(length(c) - 1))
     cumsum!(c, c)
 
-    # now make offsets into each chromosome -
+    # Dates.now make offsets into each chromosome -
     # this is the gap size within each chromosome
 
     # make ONE FM index with all the sequences - put '$' between them
     seq = reduce((x, y) -> vcat(x, [UInt8('\$')], y), contigs)
 
+    Logging.@debug "DEBUG: Making the suffix array - " * Dates.format(Dates.now(), "HH:MM:SS.ssss")
     # make the components of the FMIndex then push it
     sa = Sa(seq)
+
+    Logging.@debug "DEBUG: Doing the bwt - " * Dates.format(Dates.now(), "HH:MM:SS.ssss")
     bwt = bwtViaSa(seq, sa)
+
+    Logging.@debug "DEBUG: Calculating totals of each character - " * Dates.format(Dates.now(), "HH:MM:SS.ssss")
     f = rankBwt(bwt).tots
+
+    Logging.@debug "DEBUG: Making the tally - " * Dates.format(Dates.now(), "HH:MM:SS.ssss")
     t = tallyViaBwt(bwt)
 
-    fm = FMIndex(f, bwt, subset_SA(sa), subset_T(t), n, c, o)
+    Logging.@debug "DEBUG: Making the FM index struct - " * Dates.format(Dates.now(), "HH:MM:SS.ssss")
 
+    fm = FMIndex(f, bwt, subset_SA(sa), subset_T(t), n, c, o)
     # print the FM indexes
     # display.(fms)
 
+    Logging.@debug "DEBUG: Writing the FM Index - " *Dates.format(Dates.now(), "HH:MM:SS.ssss")
     write_fm(fm, basename)
 
+    Logging.@debug "DEBUG: DONE - " *Dates.format(Dates.now(), "HH:MM:SS.ssss")
     return fm
 end
 

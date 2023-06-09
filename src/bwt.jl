@@ -8,6 +8,9 @@ import SuffixArrays
 global const σ = UInt8.(collect("\$ACGT"))
 global const σ_to_Col = Dict{UInt8, Int8}(ch => i for (i, ch) in enumerate(σ))
 
+# get type stability for SuffixArrays.suffixsort
+sais!(T::Vector{UInt8}, SA::Vector{Int64}, fs::Int64, n::Int64, k::Int64, isbwt::Bool)::Vector{Int64} = SuffixArrays.sais(T::Vector{UInt8}, SA::Vector{Int64}, fs::Int64, n::Int64, k::Int64, isbwt::Bool)
+
 # create a struct to hold the output of rankBwt
 struct Rank
     ranks::Vector{UInt64}
@@ -57,7 +60,9 @@ function bwtViaSa(t::Vector{UInt8})
 
     # make an array to store the results of the suffix array via BWT into
     bw = similar(tt2)
-    sa = Sa(t)
+
+    # sa = Sa(t)
+    sa = Sa_new(t)
 
     # map!(x -> tt[x], bw, suffixArray(t))
     map!(x -> tt2[x], bw, sa)
@@ -80,10 +85,10 @@ function bwtViaSa(t::Vector{UInt8}, sa::Vector{UInt64})
 
     map!(x -> tt2[x], bw, sa)
 
-    # display(String(Char.(bw)))
     return bw
 end
 
+# this is the old suffix array function
 function Sa(t::Vector{UInt8})
     """
     Given T, returns the suffix array.
@@ -100,6 +105,40 @@ function Sa(t::Vector{UInt8})
     # display(String(Char.(bw)))
     return sa
 end
+
+# this is the new suffix array function - it might (???) be better: tbd
+# need to make sure using Int64 directly doesn't cause any problems
+# the source code is very confusing (please use comments if you use weird tricks)
+# being too general with the types seems to have hurt performance
+# https://github.com/JuliaCollections/SuffixArrays.jl/blob/master/src/sais.jl
+function Sa_new(t::Vector{UInt8})
+    """
+    Given T, returns the suffix array.
+    """
+    # T = UInt64
+    # S = Int64
+    n = length(t) + 1
+    # U = UInt8
+    # I = zeros(S, n)
+
+    # put the '$' at the end for sorting purposes
+    tt1 = vcat(t, [0x24])
+
+    # make an array to store the results of the suffix array via BWT into
+    sa = zeros(Int64, length(tt1))
+
+    # map!(x -> tt[x], bw, suffixArray(t))
+    sa = sais!(tt1, sa, 0, n, 256, false)
+
+    # add one to each value, since this is required
+    # this is flexibility built into the SuffixArrays package
+    sa .+= 1
+
+    # display(String(Char.(bw)))
+    return sa
+end
+
+
 
 function rankBwt(bw::Vector{UInt8})
     """
