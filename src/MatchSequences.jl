@@ -5,12 +5,21 @@ import BenchmarkTools
 import StatProfilerHTML
 import Logging
 import Dates
+import TimerOutputs
 
 include("bwt.jl")
 include("fm.jl")
 include("reader.jl")
+include("sais.jl")
 
 function main(basename = "./test/test.fasta")
+    to = TimerOutputs.TimerOutput()
+    # disable by default
+    TimerOutputs.disable_timer!(to)
+
+    # enable again if in debug module
+    Logging.@debug TimerOutputs.enable_timer!(to)
+
     # get the information for this genome
     genome_info = read_fai(basename * ".fai")
     gap_list = map(i -> i.NAME, genome_info)
@@ -23,28 +32,31 @@ function main(basename = "./test/test.fasta")
     
     Logging.@debug "Reading in the genome - " * Dates.format(Dates.now(), "HH:MM:SS.ssss")
     i = 1
-    for chr in genome_info
-        seq_raw = read_chr(basename, chr)
-        pos_Ns = find_Ns(seq_raw)
-        gap_number[i] = length(pos_Ns)
 
-        # save the contig names
-        append!(n, repeat([chr.NAME],  gap_number[i] + 1))
+    TimerOutputs.@timeit to "read_fm" begin
+        for chr in genome_info
+            seq_raw = read_chr(basename, chr)
+            pos_Ns = find_Ns(seq_raw)
+            gap_number[i] = length(pos_Ns)
 
-        push!(o, UInt64(0))
+            # save the contig names
+            append!(n, repeat([chr.NAME],  gap_number[i] + 1))
 
-        append!(o, cumsum(map(x -> x.second - x.first + 1, pos_Ns)))
+            push!(o, UInt64(0))
 
-        if gap_number[i] == 0
-            push!(contigs, seq_raw)
-        else
-            for contig in break_on_Ns(seq_raw, pos_Ns)
-                # break the chromosomes back into contigs
-                push!(contigs, contig)
+            append!(o, cumsum(map(x -> x.second - x.first + 1, pos_Ns)))
+
+            if gap_number[i] == 0
+                push!(contigs, seq_raw)
+            else
+                for contig in break_on_Ns(seq_raw, pos_Ns)
+                    # break the chromosomes back into contigs
+                    push!(contigs, contig)
+                end
             end
+            # increment the original chromosome counter
+            i += 1
         end
-        # increment the original chromosome counter
-        i += 1
     end
  
     # get the map that will also be stored in the FM index
@@ -57,30 +69,32 @@ function main(basename = "./test/test.fasta")
 
     # make ONE FM index with all the sequences - put '$' between them
     seq = reduce((x, y) -> vcat(x, [UInt8('\$')], y), contigs)
-    return 0
+
     Logging.@debug "Making the suffix array - " * Dates.format(Dates.now(), "HH:MM:SS.ssss")
     # make the components of the FMIndex then push it
-    sa = Sa(seq)
+    TimerOutputs.@timeit to "Sa" sa = Sa(seq)
 
     Logging.@debug "Doing the bwt - " * Dates.format(Dates.now(), "HH:MM:SS.ssss")
-    bwt = bwtViaSa(seq, sa)
+    TimerOutputs.@timeit to "bwtViaSa" bwt = bwtViaSa(seq, sa)
 
     Logging.@debug "Calculating totals of each character - " * Dates.format(Dates.now(), "HH:MM:SS.ssss")
-    f = rankBwt(bwt).tots
+    TimerOutputs.@timeit to "rankBwt" f = rankBwt(bwt).tots
 
     Logging.@debug "Making the tally - " * Dates.format(Dates.now(), "HH:MM:SS.ssss")
-    t = tallyViaBwt(bwt)
+    TimerOutputs.@timeit to "tallyViaBwt" t = tallyViaBwt(bwt)
 
     Logging.@debug "Making the FM index struct - " * Dates.format(Dates.now(), "HH:MM:SS.ssss")
 
-    fm = FMIndex(f, bwt, subset_SA(sa), subset_T(t), n, c, o)
+    TimerOutputs.@timeit to "FMIndex" fm = FMIndex(f, bwt, subset_SA(sa), subset_T(t), n, c, o)
     # print the FM indexes
     # display.(fms)
 
-    Logging.@debug "Writing the FM Index - " *Dates.format(Dates.now(), "HH:MM:SS.ssss")
-    write_fm(fm, basename)
+    Logging.@debug "Writing the FM Index - " * Dates.format(Dates.now(), "HH:MM:SS.ssss")
+    TimerOutputs.@timeit to "write_fm" write_fm(fm, basename)
 
-    Logging.@debug "DONE - " *Dates.format(Dates.now(), "HH:MM:SS.ssss")
+    Logging.@debug "DONE - " * Dates.format(Dates.now(), "HH:MM:SS.ssss")
+
+    Logging.@debug show(stdout, to, sortby = :firstexec, compact = true)
     return fm
 end
 
