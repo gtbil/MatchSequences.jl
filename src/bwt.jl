@@ -61,8 +61,8 @@ function bwtViaSa(t::Vector{UInt8})
     # make an array to store the results of the suffix array via BWT into
     bw = similar(tt2)
 
-    # sa = Sa(t)
-    sa = Sa_new(t)
+    sa = Sa(t)
+    # sa = Sa_new(t)
 
     # map!(x -> tt[x], bw, suffixArray(t))
     map!(x -> tt2[x], bw, sa)
