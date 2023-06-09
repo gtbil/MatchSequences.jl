@@ -57,7 +57,7 @@ function main(basename = "./test/test.fasta")
 
     # make ONE FM index with all the sequences - put '$' between them
     seq = reduce((x, y) -> vcat(x, [UInt8('\$')], y), contigs)
-
+    return 0
     Logging.@debug "Making the suffix array - " * Dates.format(Dates.now(), "HH:MM:SS.ssss")
     # make the components of the FMIndex then push it
     sa = Sa(seq)

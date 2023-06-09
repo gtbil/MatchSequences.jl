@@ -71,6 +71,32 @@ function read_chr(basename::String, contig_info::ContigInfo)::Vector{UInt8}
     return seq
 end
 
+function find_Ns_new(seq::Vector{UInt8})::Vector{Pair{UInt64, UInt64}}
+    """
+    Finds the N gaps and their lengths in each contig. 
+    Return a vector of Pairs having the First-Last positions for all N's
+    """
+    # first find all the N's
+    # make a bitmask for the N's
+    is_N = Vector{Bool}(undef, length(seq) - 1)
+    map!(x -> x == 0x4e, is_N, @view(seq[1:(length(seq)-1)]))
+
+    # check if adjacent elements are the same
+    map!(xor, is_N, @view(is_N[1:(length(is_N)-1)]), @view(is_N[2:length(is_N)]))
+
+    N_gaps = sum(is_N) ÷ 2
+
+    # if pos_Ns is empty, return it (since we will not have any gaps)
+    if N_gaps == 0
+        return Vector{Pair{UInt64, UInt64}}()
+    end
+
+    # now find all
+    pos_Ns = reshape(findall(is_N), N_gaps, 2)
+
+    return map(Pair, @view(pos_Ns[:,1]), @view(pos_Ns[:,2]) .- 1)
+end
+
 function find_Ns(seq::Vector{UInt8})::Vector{Pair{UInt64, UInt64}}
     """
     Finds the N gaps and their lengths in each contig. 
@@ -85,13 +111,13 @@ function find_Ns(seq::Vector{UInt8})::Vector{Pair{UInt64, UInt64}}
     end
 
     # find where the N's are non-contiguously numbered
-    range_changes = (pos_Ns[2:(length(pos_Ns))] - pos_Ns[1:(length(pos_Ns) - 1)]) .!= 1
+    @views range_changes = (pos_Ns[2:(length(pos_Ns))] - pos_Ns[1:(length(pos_Ns) - 1)]) .!= 1
 
     # find where the ranges start
-    starts = vcat(first(pos_Ns), pos_Ns[findall(range_changes) .+ 1])
+    @views starts = vcat(first(pos_Ns), pos_Ns[findall(range_changes) .+ 1])
 
     # and where they end
-    ends = vcat(pos_Ns[findall(range_changes)], last(pos_Ns))
+    @views ends = vcat(pos_Ns[findall(range_changes)], last(pos_Ns))
 
     # now zip the starts and ends together
     pairs = map(Pair, starts, ends)
