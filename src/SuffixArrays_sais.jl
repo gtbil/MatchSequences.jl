@@ -3,11 +3,13 @@
 # https://github.com/kurpicz/sais-lite-lcp/blob/master/sais.c
 # https://github.com/JuliaCollections/SuffixArrays.jl/blob/master/src/sais.jl
 # https://discourse.julialang.org/t/parse-an-array-of-bits-bitarray-to-an-integer/42361/26
+# https://zork.net/~st/jottings/sais.html
  
-
 function mySuffixSort(t::Vector{UInt8})
     0
 end
+
+
 
 
 
