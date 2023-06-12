@@ -10,7 +10,7 @@ import TimerOutputs
 include("bwt.jl")
 include("fm.jl")
 include("reader.jl")
-include("sais.jl")
+include("SA-IS.jl")
 
 function main(basename = "./test/test.fasta")
     to = TimerOutputs.TimerOutput()
