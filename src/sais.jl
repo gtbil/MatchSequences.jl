@@ -1,9 +1,11 @@
 # implement the SA-IS sorting algorithm
 # https://zork.net/~st/jottings/sais.htm
 # https://github.com/kurpicz/sais-lite-lcp/blob/master/sais.c
-# https://github.com/JuliaCollections/SuffixArrays.jl/blob/master/src/sais.jl 
+# https://github.com/JuliaCollections/SuffixArrays.jl/blob/master/src/sais.jl
+# https://discourse.julialang.org/t/parse-an-array-of-bits-bitarray-to-an-integer/42361/26
+ 
 
-function mySuffixSort(t::Vector{UInt8{}})
+function mySuffixSort(t::Vector{UInt8})
     0
 end
 
@@ -37,12 +39,23 @@ end
  * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
- =#
+
+
+ # from SuffixArrays.jl
+ const CodeUnits = Union{UInt8, UInt16}
+
+ # I think this type union may be unnecessary now? indexing with unsigned int
+ # seems to work fine.
+ const IndexTypes = Union{Int8, Int16, Int32, Int64}
+ const IndexVector = AbstractVector{<:IndexTypes}
+
+ # start sais.jl
 
  struct IntVector <: AbstractVector{Int}
     vec::Array{Int,1}
     off::Int
 end
+
 Base.size(v::IntVector) = (length(v.vec)-v.off,)
 Base.getindex(v::IntVector, key) = v.vec[v.off+Int(key)]
 Base.setindex!(v::IntVector, value, key) = v.vec[v.off+Int(key)] = value
@@ -81,8 +94,11 @@ function sais(
     fs::Int,
     n::Int,
     k::Int,
-    isbwt::Bool,
-)
+    isbwt::Bool)
+    """
+    * T : the object to be sorted (as the UInts)
+    * SA : the vector of indexes that will be modified
+    """
     pidx = 0
     flags = 0
     if k <= 256
@@ -463,3 +479,4 @@ function computeBWT(
     end
     return pidx
 end
+ =#
