@@ -36,6 +36,7 @@ using PProf
 Profile.Allocs.clear()
 
 Profile.Allocs.@profile sample_rate=0.01 main("../CokerTest/Coker312_A01.fasta")
+Profile.Allocs.@profile sample_rate=1 MatchSequences.benchmark(t, l_vec, lms_vec, temp_vec2, out_vec2, heads, tails; σ_in = alpha);
 
 PProf.Allocs.pprof(from_c = false)
 ```
