@@ -57,22 +57,25 @@ function suffixIsLType!(t::Vector{UInt8},
     # the empty character is guaranteed to be R type
     out_vec[end:end] .= 0
 
-    @views accumulate!((x, y) -> out_vec[y] | (x & same_vec[y+1]), 
-                out_vec[length(t):-1:1],
-                (length(out_vec)-1):-1:1; 
-                 init = 0)
-
-    return out_vec
-
     # now move our way up same_vec, and perform the same ops as we go
     for i in length(t):-1:1
-        @views out_vec[i:i] .= out_vec[i] | (same_vec[i+1] & (out_vec[(i+1)]))
+        @views out_vec[i:i] .= out_vec[i] || (same_vec[i+1] && (out_vec[(i+1)]))
     end
 
     return out_vec
 end
 
+function suffixIsLMS(l_vec::BitVector)::BitVector
+    out_vec = BitArray{1}(undef, length(l_vec))
 
+    out_vec = suffixIsLMS!(l_vec, out_vec)
 
-# find the indices of S-Type suffixes
-# S-type suffixes are SMALLER that the suffix to their right
+    return out_vec
+end
+
+function suffixIsLMS!(l_vec::BitVector,
+                      out_vec::BitVector)::BitVector
+    out_vec[1:1] .= 0
+    @views out_vec[2:end] .= l_vec[1:(end-1)] .& .~ l_vec[2:(end)]
+    return out_vec
+end
