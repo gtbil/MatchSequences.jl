@@ -1,5 +1,7 @@
-global const σ = UInt8.(collect("\$ACGT"))
-# global const σ = UInt8.(collect("abcdefg"))
+# import LoopVectorization
+
+# global const σ = UInt8.(collect("\$ACGT"))
+global const σ = UInt8.(collect("abcdefg"))
 global const σ_to_Col = Dict{UInt8, Int8}(ch => i for (i, ch) in enumerate(σ))
 
 # build based on the code here:
@@ -33,7 +35,8 @@ Helper function. Returns a BitVector that is `length(t) + 1` long.
 """
 function charBeforeIsSame!(t::Vector{UInt8}, out_vec::BitVector)::BitVector
 
-    # set the first value to be false (it cannot be equal to the substring before it)
+    # set the first value to be false (it cannot be equal to the substring 
+    # before it)
     out_vec[1:1] .= 0
 
     # use this weird slicing syntax to avoid any allocations
@@ -173,33 +176,64 @@ end
 # make the buckets
 # it seems like it would be best to do this with a bitmask
 
-function findBucketSizes(t::Vector{UInt8}; alphabet=σ)
-    temp_vec = BitArray{1}(undef, length(t))
+"""
+A non-modifying version of `findBucketSizes!`.
+"""
+function findBucketSizes(t::Vector{UInt8}; alphabet=σ)::Vector{UInt64}
     out_vec = Vector{UInt64}(undef, length(alphabet))
 
-    out_vec = findBucketSizes!(t, temp_vec, out_vec; alphabet=alphabet)
+    out_vec = findBucketSizes!(t, out_vec; alphabet=alphabet)
 
     return out_vec
 end
 
+"""
+    findBucketSizes!(t, out_vec; alphabet=σ)
+
+Given the string, `t`, and two temporary vectors, `temp_vec` and `out_vec`, as
+well as an optional `alphabet` kwar, will find the size of each bucket. The
+primary operation is to computer a temporary bit-mask and immediately consume
+it, using `count!`
+# Arguments:
+* `t::Vector{UInt8}`   : Vector of UInt8 characters.
+* `out_vec::Vector{UInt64}` : Vector to store the output in.
+* `alphabet::Vector{UInt8}` : Vector of UInt8 characters to use as the alphabet.
+"""
 function findBucketSizes!(t::Vector{UInt8}, 
-                          temp_vec::BitVector, 
-                          out_vec::Vector{UInt64}; alphabet=σ)
+                          out_vec::Vector{UInt64}; alphabet=σ)::Vector{UInt64}
+
     # make a bitmask for each character, and then sum it
+    # this way, the bitmask is consumed as it is produced
+    
     for ch in alphabet
-        temp_vec .= t .== ch
-        out_vec[σ_to_Col[ch]:σ_to_Col[ch]] .= sum(temp_vec)
-        # out_vec[σ_to_Col[ch]:σ_to_Col[ch]] .= sum(t .== ch)
+        @views count!(==(ch), 
+                      out_vec[σ_to_Col[ch]:σ_to_Col[ch]],
+                      t)
     end
+
     return out_vec
 end
 
+"""
+A non-modifying version of `findBucketHeads`.
+"""
 function findBucketHeads(bucket_sz::Vector{UInt64})::Vector{UInt64}
     out_vec = Vector{UInt64}(undef, length(bucket_sz))
     out_vec = findBucketHeads!(bucket_sz, out_vec)
     return out_vec
 end
 
+"""
+    findBucketHeads!(bucket_sz, out_vec)
+
+A function that finds where a group of characters will _start_ in the resulting
+suffix array. Note position `1` is taken up by the empty string, so this will
+need to be trimmed out by the caller.
+# Arguments:
+* `bucket_sz::Vector{UInt64}` : Vector of UInt64 indicating the size of each
+                                bucket.
+* `out_vec::Vector{UInt64}``  : Vector to store the output in.
+"""
 function findBucketHeads!(bucket_sz::Vector{UInt64},
                           out_vec::Vector{UInt64})::Vector{UInt64}
     # set the first value to be 0 (will be dealt with later)
@@ -216,12 +250,26 @@ function findBucketHeads!(bucket_sz::Vector{UInt64},
     return out_vec
 end
 
+"""
+A non-modifying version of `findBucketTails`.
+"""
 function findBucketTails(bucket_sz::Vector{UInt64})::Vector{UInt64}
     out_vec = Vector{UInt64}(undef, length(bucket_sz))
     out_vec = findBucketTails!(bucket_sz, out_vec)
     return out_vec
 end
 
+"""
+    findBucketTails!(bucket_sz, out_vec)
+
+A function that finds where a group of characters will _end_ in the resulting
+suffix array. Note position `1` is taken up by the empty string, so this will
+need to be trimmed out by the caller.
+# Arguments:
+* `bucket_sz::Vector{UInt64}` : Vector of UInt64 indicating the size of each
+                                bucket.
+* `out_vec::Vector{UInt64}``  : Vector to store the output in.
+"""
 function findBucketTails!(bucket_sz::Vector{UInt64},
                           out_vec::Vector{UInt64})::Vector{UInt64}
     # count the number of characters seen up until x point
@@ -234,8 +282,12 @@ function findBucketTails!(bucket_sz::Vector{UInt64},
     return out_vec
 end
 
+"""
+A benchmarking function that will eventually be used to call the entire
+suffix sorting routine.
+"""
 function benchmark(t::Vector{UInt8}, 
-                   l_vec::BitVector, lms_vec::BitVector, temp_vec2::BitVector, 
+                   l_vec::BitVector, lms_vec::BitVector,
                    out_vec2::Vector{UInt64}, 
                    heads::Vector{UInt64}, 
                    tails::Vector{UInt64};
@@ -243,28 +295,39 @@ function benchmark(t::Vector{UInt8},
     
     MatchSequences.suffixIsLType!( t , lms_vec, l_vec )
     MatchSequences.suffixIsLMS!( l_vec, lms_vec )
-    MatchSequences.findBucketSizes!(t, temp_vec2, out_vec2; alphabet = σ_in)
+    MatchSequences.findBucketSizes!(t, out_vec2; alphabet = σ_in)
     MatchSequences.findBucketHeads!(out_vec2, heads)
     MatchSequences.findBucketTails!(out_vec2, tails)
 
     return l_vec, lms_vec, heads, tails
 end
 
-
 #=
+# varinfo()
 using MatchSequences
-using StatsBase
-using BenchmarkTools
+import StatsBase
+import BenchmarkTools 
+import Random
+
+Random.seed!(1234)
 
 alpha = UInt8.(collect("\$ACGT"))
-t = UInt8.(StatsBase.sample(alpha, 100_000_000))
+t = UInt8.(StatsBase.sample(alpha, 100_000))
+
+alpha = UInt8.(collect("abcdefg"))
+t = UInt8.(collect("cabbage"))
 
 l_vec = BitArray{1}(undef, length(t) + 1)
 lms_vec = BitArray{1}(undef, length(t) + 1)
-temp_vec2 = BitArray{1}(undef, length(t))
 out_vec2 = Vector{UInt64}(undef, length(alpha))
 heads = Vector{UInt64}(undef, length(alpha))
 tails = Vector{UInt64}(undef, length(alpha))
 
-@btime MatchSequences.benchmark($t, $l_vec, $lms_vec, $temp_vec2, $out_vec2, $heads, $tails; σ_in = $alpha);
+out = MatchSequences.benchmark(t, l_vec, lms_vec, out_vec2, heads, tails; σ_in = alpha);
+map(x -> Int.(x), out)
+
+BenchmarkTools.@btime MatchSequences.benchmark($t, $l_vec, $lms_vec, $out_vec2, $heads, $tails; σ_in = $alpha);
+
+100_000  222.304 ms (0 allocations: 0 bytes)
+
 =#
