@@ -287,8 +287,7 @@ A benchmarking function that will eventually be used to call the entire
 suffix sorting routine.
 """
 function benchmark(t::Vector{UInt8}, 
-                   l_vec::BitVector, lms_vec::BitVector, 
-                   temp_vec::BitVector, 
+                   l_vec::BitVector, lms_vec::BitVector,
                    out_vec::Vector{UInt64}, 
                    heads::Vector{UInt64}, 
                    tails::Vector{UInt64};
@@ -299,7 +298,8 @@ function benchmark(t::Vector{UInt8},
 
     # determine which suffixes are LMS
     MatchSequences.suffixIsLMS!( l_vec, lms_vec )
-    MatchSequences.findBucketSizes!(t, out_vec2; alphabet = σ_in)
+
+    MatchSequences.findBucketSizes!(t, out_vec; alphabet = σ_in)
     MatchSequences.findBucketHeads!(out_vec2, heads)
     MatchSequences.findBucketTails!(out_vec2, tails)
 
@@ -323,14 +323,14 @@ t = UInt8.(collect("cabbage"))
 
 l_vec = BitArray{1}(undef, length(t) + 1)
 lms_vec = BitArray{1}(undef, length(t) + 1)
-out_vec2 = Vector{UInt64}(undef, length(alpha))
+out_vec = Vector{UInt64}(undef, length(alpha))
 heads = Vector{UInt64}(undef, length(alpha))
 tails = Vector{UInt64}(undef, length(alpha))
 
-out = MatchSequences.benchmark(t, l_vec, lms_vec, out_vec2, heads, tails; σ_in = alpha);
+out = MatchSequences.benchmark(t, l_vec, lms_vec, out_vec, heads, tails; σ_in = alpha);
 map(x -> Int.(x), out)
 
-BenchmarkTools.@btime MatchSequences.benchmark($t, $l_vec, $lms_vec, $out_vec2, $heads, $tails; σ_in = $alpha);
+BenchmarkTools.@btime MatchSequences.benchmark($t, $l_vec, $lms_vec, $out_vec, $heads, $tails; σ_in = $alpha);
 
 100_000  222.304 ms (0 allocations: 0 bytes)
 
