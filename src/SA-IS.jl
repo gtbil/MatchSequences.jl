@@ -287,13 +287,17 @@ A benchmarking function that will eventually be used to call the entire
 suffix sorting routine.
 """
 function benchmark(t::Vector{UInt8}, 
-                   l_vec::BitVector, lms_vec::BitVector,
-                   out_vec2::Vector{UInt64}, 
+                   l_vec::BitVector, lms_vec::BitVector, 
+                   temp_vec::BitVector, 
+                   out_vec::Vector{UInt64}, 
                    heads::Vector{UInt64}, 
                    tails::Vector{UInt64};
                    σ_in::Vector{UInt8})
     
+    # build the type map
     MatchSequences.suffixIsLType!( t , lms_vec, l_vec )
+
+    # determine which suffixes are LMS
     MatchSequences.suffixIsLMS!( l_vec, lms_vec )
     MatchSequences.findBucketSizes!(t, out_vec2; alphabet = σ_in)
     MatchSequences.findBucketHeads!(out_vec2, heads)
