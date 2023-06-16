@@ -5,6 +5,8 @@ global const σ_to_Col = Dict{UInt8, Int8}(ch => i for (i, ch) in enumerate(σ))
 
 # build based on the code here:
 # https://zork.net/~st/jottings/sais.html
+# http://web.stanford.edu/class/archive/cs/cs166/cs166.1196/lectures/04/Small04.pdf
+
 
 # return a BitArray indicating if each character is an S-Type character
 
@@ -297,11 +299,18 @@ function findBucketTails!(bucketsizes::Vector{UInt64},
 end
 
 """
-    guessLMSSort!(t, sa, isltype, islms, tails)
+    guessLMSSort!(t, sa, islms, tails)
 
-Using a generator expression? 
+Insert the LMS substrings into the suffix array. This is done by iterating
+over the `islms` BitVector, and only [yielding](https://discourse.julialang.org/t/iterator-for-indexes-of-true-values-in-bitvector-without-allocations/100411/5)
+indexes for those that are true.
 
-https://discourse.julialang.org/t/iterator-for-indexes-of-true-values-in-bitvector-without-allocations/100411/5
+# Arguments :
+* `t::Vector{UInt8}`     : Vector of UInt8 characters.
+* `sa::Vector{UInt64}`   : Vector to store the output in.
+* `islms::BitVector`     : BitVector indicating which characters are LMS.
+* `tails::Vector{UInt64}`: Vector indicating where each bucket ends. THIS is 
+                           also modified!
 """
 function guessLMSSort!(t::Vector{UInt8}, 
                        sa::Vector{UInt64},
@@ -317,6 +326,80 @@ function guessLMSSort!(t::Vector{UInt8},
     @views for idx in Iterators.map(first, Iterators.filter(last, pairs(islms[1:(end-1)])))
         sa[tails[σ_to_Col[t[idx]]]:tails[σ_to_Col[t[idx]]]] .= idx
         tails[σ_to_Col[t[idx]]:σ_to_Col[t[idx]]] .-= 1
+    end
+
+    #=
+    It may be better here to find the sections of LMS suffixes for each of the 
+    buckets (alphabets), and then sort them all at once. This would require a 
+    set of temp bitmasks for each part of the alphabet, and then basically map
+    the indexes of these set bits to the correct places in sa, along with an
+    incrementing counter.
+    =#
+                       
+    return sa
+end
+
+"""
+    induceSortL!(t, sa, isltype, islms, tails)
+
+# Arguments :
+* `t::Vector{UInt8}`     : Vector of UInt8 characters.
+* `sa::Vector{UInt64}`   : Vector to store the output in.
+* `isltype::BitVector`   : BitVector indicating which characters are L-type.
+* `islms::BitVector`     : BitVector indicating which characters are LMS.
+* `heads::Vector{UInt64}`: Vector indicating where each bucket starts. THIS is 
+                           also modified!
+"""
+function induceSortL!(t::Vector{UInt8}, 
+                      sa::Vector{UInt64},
+                      isltype::BitVector,
+                      islms::BitVector,
+                      bucketsizes::Vector{UInt64}, 
+                      heads::Vector{UInt64})::Vector{UInt64}
+    # reset bucket heads
+    findBucketHeads!(bucketsizes, heads)
+
+    # iterate along the true values in islms (no allocations?)
+    # until we reach the empty string
+    # solution from here
+    # @views for idx in Iterators.map(first, Iterators.filter(last, pairs(isltype[1:(end-1)] .& islms[2:end])))
+    # for (idx_sa, idx_t) in pairs(sa)
+    # TODO : we need to try to improve this....
+    for idx_t in sa
+        @views if idx_t > 1 && isltype[idx_t-1]
+            sa[heads[σ_to_Col[t[idx_t-1]]]:heads[σ_to_Col[t[idx_t-1]]]] .= idx_t - 1
+            heads[σ_to_Col[t[idx_t-1]]:σ_to_Col[t[idx_t-1]]] .+= 1
+        end
+    end
+                       
+    return sa
+end
+
+"""
+    induceSortS!(t, sa, isltype, islms, tails)
+
+# Arguments :
+* `t::Vector{UInt8}`     : Vector of UInt8 characters.
+* `sa::Vector{UInt64}`   : Vector to store the output in.
+* `isltype::BitVector`   : BitVector indicating which characters are L-type.
+* `islms::BitVector`     : BitVector indicating which characters are LMS.
+* `tails::Vector{UInt64}`: Vector indicating where each bucket ends. THIS is 
+                           also modified!
+"""
+function induceSortS!(t::Vector{UInt8}, 
+                      sa::Vector{UInt64},
+                      isltype::BitVector,
+                      islms::BitVector, 
+                      bucketsizes::Vector{UInt64},
+                      tails::Vector{UInt64})::Vector{UInt64}
+    # reset bucket tails
+    findBucketTails!(bucketsizes, tails)
+
+    for idx_t in Iterators.reverse(sa)
+        @views if idx_t > 1 && ~ isltype[idx_t-1]
+            sa[tails[σ_to_Col[t[idx_t-1]]]:tails[σ_to_Col[t[idx_t-1]]]] .= idx_t - 1
+            tails[σ_to_Col[t[idx_t-1]]:σ_to_Col[t[idx_t-1]]] .-= 1
+        end
     end
                        
     return sa
@@ -355,6 +438,12 @@ function benchmark(t::Vector{UInt8},
     # in the suffix array
     MatchSequences.guessLMSSort!(t, sa, islms, tails)
 
+    # slot in the L-type suffixes next to the LMS suffixes
+    MatchSequences.induceSortL!(t, sa, isltype, islms, bucketsizes, heads)
+
+    # now work backwards on the S-type
+    MatchSequences.induceSortS!(t, sa, isltype, islms, bucketsizes, tails)
+
     return isltype, islms, heads, tails, sa
 end
 
@@ -390,6 +479,11 @@ map(x -> Int.(x), out)
 
 BenchmarkTools.@btime MatchSequences.benchmark($t, $sa, $l_vec, $lms_vec, $out_vec, $heads, $tails; σ_in = $alpha);
 
+import SuffixArrays
+SuffixArrays.suffixsort(t)
+
+BenchmarkTools.@btime SuffixArrays.suffixsort($t)
+cabbage   39.200 μs (0 allocations: 0 bytes)
 100_000  222.304 ms (0 allocations: 0 bytes)
 
 =#
