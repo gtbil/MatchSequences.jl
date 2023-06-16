@@ -1,8 +1,3 @@
-# import LoopVectorization
-# global const σ = UInt8.(collect("\$ACGT"))
-global const σ = UInt8.(collect("abcdefg"))
-global const σ_to_Col = Dict{UInt8, Int8}(ch => i for (i, ch) in enumerate(σ))
-
 # build based on the code here:
 # https://zork.net/~st/jottings/sais.html
 # http://web.stanford.edu/class/archive/cs/cs166/cs166.1196/lectures/04/Small04.pdf
@@ -35,7 +30,7 @@ Helper function. Returns a BitVector that is `length(t) + 1` long.
 
 # Arguments:
 * `t::Vector{UInt8}`  : Vector of UInt8 characters.
-* `issame::BitVector`: BitVector to store the output in (`undef` is OK)
+* `issame::BitVector` : BitVector to store the output in (`undef` is OK)
 """
 function charBeforeIsSame!(t::Vector{UInt8}, issame::BitVector)::BitVector
 
@@ -98,7 +93,7 @@ function suffixIsLType!(t::Vector{UInt8},
     # the last character before the empty character must be L type
     isltype[length(t):length(t)] .= 1
 
-    # the empty character is guaranteed to be R type
+    # the empty character is guaranteed to be S type
     isltype[end:end] .= 0
 
     # now move our way up same_vec, and perform the same ops as we go
@@ -189,7 +184,8 @@ end
 """
 A non-modifying version of `findBucketSizes!`.
 """
-function findBucketSizes(t::Vector{UInt8}; alphabet=σ)::Vector{UInt64}
+function findBucketSizes(t::Vector{UInt8}; 
+                         alphabet=σ::Vector{UInt8})::Vector{UInt64}
     bucketsizes = Vector{UInt64}(undef, length(alphabet))
 
     findBucketSizes!(t, bucketsizes; alphabet=alphabet)
@@ -212,14 +208,14 @@ it, using `count!`
 """
 function findBucketSizes!(t::Vector{UInt8}, 
                           bucketsizes::Vector{UInt64}; 
-                          alphabet=σ)::Vector{UInt64}
+                          alphabet=σ::Vector{UInt8})::Vector{UInt64}
 
     # make a bitmask for each character, and then sum it
     # this way, the bitmask is consumed as it is produced
     
     for ch in alphabet
         @views count!(==(ch), 
-                      bucketsizes[σ_to_Col[ch]:σ_to_Col[ch]],
+                      bucketsizes[ch:ch],
                       t)
     end
 
@@ -324,8 +320,8 @@ function guessLMSSort!(t::Vector{UInt8},
     # until we reach the empty string
     # solution from here
     @views for idx in Iterators.map(first, Iterators.filter(last, pairs(islms[1:(end-1)])))
-        sa[tails[σ_to_Col[t[idx]]]:tails[σ_to_Col[t[idx]]]] .= idx
-        tails[σ_to_Col[t[idx]]:σ_to_Col[t[idx]]] .-= 1
+        sa[tails[t[idx]]:tails[t[idx]]] .= idx
+        tails[t[idx]:t[idx]] .-= 1
     end
 
     #=
@@ -367,8 +363,8 @@ function induceSortL!(t::Vector{UInt8},
     # TODO : we need to try to improve this....
     for idx_t in sa
         @views if idx_t > 1 && isltype[idx_t-1]
-            sa[heads[σ_to_Col[t[idx_t-1]]]:heads[σ_to_Col[t[idx_t-1]]]] .= idx_t - 1
-            heads[σ_to_Col[t[idx_t-1]]:σ_to_Col[t[idx_t-1]]] .+= 1
+            sa[heads[t[idx_t-1]]:heads[t[idx_t-1]]] .= idx_t - 1
+            heads[t[idx_t-1]:t[idx_t-1]] .+= 1
         end
     end
                        
@@ -397,8 +393,8 @@ function induceSortS!(t::Vector{UInt8},
 
     for idx_t in Iterators.reverse(sa)
         @views if idx_t > 1 && ~ isltype[idx_t-1]
-            sa[tails[σ_to_Col[t[idx_t-1]]]:tails[σ_to_Col[t[idx_t-1]]]] .= idx_t - 1
-            tails[σ_to_Col[t[idx_t-1]]:σ_to_Col[t[idx_t-1]]] .-= 1
+            sa[tails[t[idx_t-1]]:tails[t[idx_t-1]]] .= idx_t - 1
+            tails[t[idx_t-1]:t[idx_t-1]] .-= 1
         end
     end
                        
@@ -408,6 +404,25 @@ end
 """
 A benchmarking function that will eventually be used to call the entire
 suffix sorting routine.
+
+Space needed:
+* t           -  8 bits × length of input
+* sa          - 64 bits × length of input
+* isltype     -  1 bit  × length of input
+* islms       -  1 bit  × length of input
+
+* bucketsizes - 64 bits × length of alphabet
+* heads       - 64 bits × length of alphabet
+* tails       - 64 bits × length of alphabet
+* σ_in        -  8 bits × length of alphabet  
+++++++++++++++++++++++++++++++++++++++++++++
+
+74 bits × length of input + 200 bits × length of alphabet  
+
+For a standard string of length 2_200_000_000 and 5 letter alphabet, this works
+out to 20.35 GB for the string + 125 bytes for the alphabet. The amount needed
+for the alphabet will grow as the recursive stack grows.
+
 """
 function benchmark(t::Vector{UInt8}, 
                    sa::Vector{UInt64},
@@ -416,8 +431,11 @@ function benchmark(t::Vector{UInt8},
                    bucketsizes::Vector{UInt64}, 
                    heads::Vector{UInt64}, 
                    tails::Vector{UInt64};
-                   σ_in::Vector{UInt8})
-    
+                   σ_in::Vector{UInt8}) 
+    # make sure sa is zeroed out to begin with
+    # or else the traversal during induce sort will throw weird errors
+    sa .= 0
+
     # build the type map
     # islms is used as a temporary variable here
     # for tracking if adjacent symbols are equal
@@ -431,7 +449,7 @@ function benchmark(t::Vector{UInt8},
     MatchSequences.findBucketSizes!(t, bucketsizes; alphabet = σ_in)
 
     # then find their heads and tails
-    MatchSequences.findBucketHeads!(bucketsizes, heads)
+    # MatchSequences.findBucketHeads!(bucketsizes, heads)
     MatchSequences.findBucketTails!(bucketsizes, tails)
 
     # insert all the LMS suffixes into approximately the right place
@@ -444,10 +462,13 @@ function benchmark(t::Vector{UInt8},
     # now work backwards on the S-type
     MatchSequences.induceSortS!(t, sa, isltype, islms, bucketsizes, tails)
 
-    return isltype, islms, heads, tails, sa
+    return isltype, islms, heads, tails, bucketsizes, sa
 end
 
 #=
+# σ = UInt8.(collect("\$ACGT"))
+# σ = UInt8.(collect("abcdefg"))
+
 # varinfo()
 using MatchSequences
 import StatsBase
@@ -458,6 +479,7 @@ Random.seed!(1234)
 
 alpha = UInt8.(collect("\$ACGT"))
 t = UInt8.(StatsBase.sample(alpha, 100_000))
+t = UInt8.(StatsBase.sample(alpha, 50))
 
 alpha = UInt8.(collect("abcdefg"))
 t = UInt8.(collect("cabbage"))
@@ -471,19 +493,29 @@ tails = Vector{UInt64}(undef, length(alpha))
 # allocate a vector for the suffix array
 sa = Vector{UInt64}(undef, length(t) + 1)
 # use zeroes for now
-sa = zeros(UInt64, length(t) + 1)
 
-out = MatchSequences.benchmark(t, sa, l_vec, lms_vec, out_vec, heads, tails; σ_in = alpha);
+alpha_to_col = Dict{UInt8, UInt8}(ch => i for (i, ch) in enumerate(sort(alpha)))
+col = sort(collect(values(alpha_to_col)))
 
-map(x -> Int.(x), out)
+# map to t to t′
+t′ = map(x -> alpha_to_col[x], t)
 
-BenchmarkTools.@btime MatchSequences.benchmark($t, $sa, $l_vec, $lms_vec, $out_vec, $heads, $tails; σ_in = $alpha);
+out = MatchSequences.benchmark(t′, sa, l_vec, lms_vec, out_vec, heads, tails; σ_in = col);
+
+a,b,c,d,e,f = map(x -> Int.(x), out)
+
+println("_" * join(repeat.(Char.(alpha), e)) * "\n" 
+        * join(ifelse.(isone.(a[f]), "L" , "S")) * "\n"
+        * join(ifelse.(isone.(b[f]), "^" , " ")) * "\n")
+
+BenchmarkTools.@btime MatchSequences.benchmark($t′, $sa, $l_vec, $lms_vec, $out_vec, $heads, $tails; σ_in = $col);
 
 import SuffixArrays
-SuffixArrays.suffixsort(t)
+SuffixArrays.suffixsort(t′)
 
-BenchmarkTools.@btime SuffixArrays.suffixsort($t)
+BenchmarkTools.@btime SuffixArrays.suffixsort($t′);
 cabbage   39.200 μs (0 allocations: 0 bytes)
-100_000  222.304 ms (0 allocations: 0 bytes)
+100_000    2.746 ms (0 allocations: 0 bytes) (before recursion!)
+100_000    7.363 ms (22 allocations: 4.97 MiB) (suffix arrays - after recursion)
 
 =#
