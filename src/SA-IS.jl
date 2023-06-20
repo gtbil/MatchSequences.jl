@@ -1,3 +1,18 @@
+# thank you to @mikmoore for this solution!
+# https://discourse.julialang.org/t/iterator-for-indexes-of-true-values-in-bitvector-without-allocations/100411/4
+struct Findall{I}
+	itr::I
+end
+
+Base.IteratorSize(::Findall) = Base.SizeUnknown()
+Base.eltype(x::Findall) = typeof(firstindex(x.itr))
+
+function Base.iterate(x::Findall, current=firstindex(x.itr))
+	next = findnext(x.itr, current)
+	isnothing(next) && return nothing
+	return (next, next + oneunit(next))
+end
+
 # build based on the code here:
 # https://zork.net/~st/jottings/sais.html
 # http://web.stanford.edu/class/archive/cs/cs166/cs166.1196/lectures/04/Small04.pdf
@@ -9,10 +24,11 @@
 # to the one immediately before it
 # and False (0) otherwise
 
+
 """
 A non-modifying version of `charBeforeIsSame!`.
 """
-function charBeforeIsSame(t::Vector{UInt8})::BitVector
+function charBeforeIsSame(t::Vector{T})::BitVector where {T<:Unsigned}
     # create an un-initialized bitvector
     issame = BitArray{1}(undef, length(t) + 1)
 
@@ -32,14 +48,15 @@ Helper function. Returns a BitVector that is `length(t) + 1` long.
 * `t::Vector{UInt8}`  : Vector of UInt8 characters.
 * `issame::BitVector` : BitVector to store the output in (`undef` is OK)
 """
-function charBeforeIsSame!(t::Vector{UInt8}, issame::BitVector)::BitVector
+function charBeforeIsSame!(t::Vector{T}, 
+                           issame::BitVector)::BitVector where {T<:Unsigned}
 
     # set the first value to be false (it cannot be equal to the substring 
     # before it)
     issame[1:1] .= 0
 
     # use this weird slicing syntax to avoid any allocations
-    @views issame[2:length(t)] .= t[2:length(t)] .== t[1:(length(t)-1)]
+    issame[2:length(t)] .= view(t, 2:length(t)) .== view(t, 1:(length(t)-1))
 
     # set the empty string to always be not equal to char before it
     issame[end:end] .= 0
@@ -53,7 +70,7 @@ end
 """
 A non-modifying version of `suffixIsLType!`.
 """
-function suffixIsLType(t::Vector{UInt8})::BitVector
+function suffixIsLType(t::Vector{T})::BitVector where {T<:Unsigned}
     # get the sameVec
     issame = BitArray{1}(undef, length(t) + 1)
     isltype = BitArray{1}(undef, length(t) + 1)
@@ -80,9 +97,9 @@ Returns a BitVector that is `length(t) + 1` long.
 * `isltype::BitVector` : BitVector to store the output in (`undef` is OK). 
                          Will be modified in place, returned for convenience.
 """
-function suffixIsLType!(t::Vector{UInt8}, 
+function suffixIsLType!(t::Vector{T}, 
                         issame::BitVector,
-                        isltype::BitVector)::BitVector
+                        isltype::BitVector)::BitVector where {T<:Unsigned}
     charBeforeIsSame!(t, issame)
 
     # we know a character must be L type if it is larger than the character
@@ -122,7 +139,7 @@ Given a BitVector indicating if each suffix is a left-most S-type or not.
 
 # Arguments:
 * `isltype::BitVector`   : BitVector indicating if each suffix is L-type or not.
-* `islms::BitVector` : BitVector to store the output in.
+* `islms::BitVector`     : BitVector to store the output in.
 """
 function suffixIsLMS!(isltype::BitVector,
                       islms::BitVector)::BitVector
@@ -156,10 +173,10 @@ Allocates two ints.
 * `offset_a::UInt64`   : Offset into `s` for the first LMS substring.
 * `offset_b::UInt64`   : Offset into `s` for the second LMS substring.
 """
-function suffixIsLMSEqual(t::Vector{UInt8},
+function suffixIsLMSEqual(t::Vector{T},
                           islms::BitVector,
                           offset_a::UInt64,
-                          offset_b::UInt64)::Bool
+                          offset_b::UInt64)::Bool where {T<:Unsigned}
     # return false if the one offset equals the end of the string
     if (offset_a == length(t) + 1) | (offset_b == length(t) + 1)
         return false
@@ -175,7 +192,9 @@ function suffixIsLMSEqual(t::Vector{UInt8},
     end
     
     # try to see if we can do the check without allocations
-    return @views allequal(t[offset_a:next_a] .== t[offset_b:next_b])
+    # return allequal(@view(t[offset_a:next_a]) .== @view(t[offset_b:next_b]))
+    return all(x -> first(x) == last(x),
+               zip(@view(t[offset_a:next_a]), @view(t[offset_b:next_b])))
 end
 
 # make the buckets
@@ -184,8 +203,8 @@ end
 """
 A non-modifying version of `findBucketSizes!`.
 """
-function findBucketSizes(t::Vector{UInt8}; 
-                         alphabet=σ::Vector{UInt8})::Vector{UInt64}
+function findBucketSizes(t::Vector{T}; 
+                         alphabet=σ::Vector{T})::Vector{UInt64} where {T<:Unsigned}
     bucketsizes = Vector{UInt64}(undef, length(alphabet))
 
     findBucketSizes!(t, bucketsizes; alphabet=alphabet)
@@ -206,9 +225,9 @@ it, using `count!`
 * `alphabet::Vector{UInt8}`     : Vector of UInt8 characters to use as the 
                                   alphabet.
 """
-function findBucketSizes!(t::Vector{UInt8}, 
+function findBucketSizes!(t::Vector{T}, 
                           bucketsizes::Vector{UInt64}; 
-                          alphabet=σ::Vector{UInt8})::Vector{UInt64}
+                          alphabet=σ::Vector{T})::Vector{UInt64} where {T<:Unsigned}
 
     # make a bitmask for each character, and then sum it
     # this way, the bitmask is consumed as it is produced
@@ -308,10 +327,10 @@ indexes for those that are true.
 * `tails::Vector{UInt64}`: Vector indicating where each bucket ends. THIS is 
                            also modified!
 """
-function guessLMSSort!(t::Vector{UInt8}, 
+function guessLMSSort!(t::Vector{T}, 
                        sa::Vector{UInt64},
                        islms::BitVector, 
-                       tails::Vector{UInt64})::Vector{UInt64}
+                       tails::Vector{UInt64})::Vector{UInt64} where {T<:Unsigned}
 
     # set the empty string to be the first suffix
     sa[1:1] .= length(t) + 1
@@ -319,7 +338,7 @@ function guessLMSSort!(t::Vector{UInt8},
     # iterate along the true values in islms (no allocations?)
     # until we reach the empty string
     # solution from here
-    @views for idx in Iterators.map(first, Iterators.filter(last, pairs(islms[1:(end-1)])))
+    @views for idx in Findall(islms[1:(end-1)])
         sa[tails[t[idx]]:tails[t[idx]]] .= idx
         tails[t[idx]:t[idx]] .-= 1
     end
@@ -346,12 +365,12 @@ end
 * `heads::Vector{UInt64}`: Vector indicating where each bucket starts. THIS is 
                            also modified!
 """
-function induceSortL!(t::Vector{UInt8}, 
+function induceSortL!(t::Vector{T}, 
                       sa::Vector{UInt64},
                       isltype::BitVector,
                       islms::BitVector,
                       bucketsizes::Vector{UInt64}, 
-                      heads::Vector{UInt64})::Vector{UInt64}
+                      heads::Vector{UInt64})::Vector{UInt64} where {T<:Unsigned}
     # reset bucket heads
     findBucketHeads!(bucketsizes, heads)
 
@@ -382,12 +401,12 @@ end
 * `tails::Vector{UInt64}`: Vector indicating where each bucket ends. THIS is 
                            also modified!
 """
-function induceSortS!(t::Vector{UInt8}, 
+function induceSortS!(t::Vector{T}, 
                       sa::Vector{UInt64},
                       isltype::BitVector,
                       islms::BitVector, 
                       bucketsizes::Vector{UInt64},
-                      tails::Vector{UInt64})::Vector{UInt64}
+                      tails::Vector{UInt64})::Vector{UInt64} where {T<:Unsigned}
     # reset bucket tails
     findBucketTails!(bucketsizes, tails)
 
@@ -399,6 +418,64 @@ function induceSortS!(t::Vector{UInt8},
     end
                        
     return sa
+end
+
+"""
+Need to deal with these allocations...
+
+Here's the basic strategy (split into multiple functions?)
+    * figure out which indices in the SA correspond to LMS suffixes
+    * determine which of these (adjacent) LMS suffixes are equal
+    * sum along this vector to create a new alphabet
+    * report the mapping of these new alphabet characters to the original
+      alphabet characters
+"""
+function makeSuffixArraySummary(t::Vector{T},
+                                sa::Vector{UInt64},
+                                islms::BitVector,
+                                pos_in_t::Vector{UInt64},
+                                t_new::Vector{UInt64},
+                                tempbool1::BitVector,
+                                tempbool2::BitVector) where {T<:Unsigned}
+    # iterate over the suffix array
+    # and determine if adjacent LMS suffixes are equal
+    # make a vector that is the same length as the NUMBER of LMS suffixes
+    # this will be strided along the indexes of the suffixarray
+    # determine which sa indexes are LMS
+    # t_new .= Findall(islms)
+    for (idx, v) in enumerate(Findall(islms))
+        t_new[idx:idx] .= v
+    end
+
+    # the first index will always correspond to the empty string
+    # so it will always be a new suffix
+    # we are setting this to zero because it will be at the (preceding)
+    # 1 - 1 = 0 position in the end
+    tempbool2[1:1] .= 1
+
+    # make the vector showing where in the original string each of the LMS
+    # suffixes comes from
+    @views pos_in_t .= sa[t_new]
+
+    # now do to the equality check for adjacent LMS suffixes
+    @views for (idx, (off1, off2)) in enumerate(zip(pos_in_t[1:(end-1)], pos_in_t[2:end]))
+        tempbool2[(idx + 1):(idx + 1)] .= ~ suffixIsLMSEqual(t, islms, off1, off2)
+    end
+
+    # make a vector to output the summary string
+    # this will be confined by numlms
+    # for now, lets HARDCODE it as a UInt
+    # TODO : parameterize this on the number of LMS suffixes
+
+    # finally, do the actual reindexing
+    cumsum!(t_new, tempbool2)
+
+    # need to return:
+    # the summary string, which is the string of the reindexed LMS substrings
+    # the alphabet size, which is the number of unique LMS substrings
+    # the summary suffix offsets, which maps from the summary string
+    # to positions in t
+    return t_new, pos_in_t
 end
 
 """
@@ -424,14 +501,19 @@ out to 20.35 GB for the string + 125 bytes for the alphabet. The amount needed
 for the alphabet will grow as the recursive stack grows.
 
 """
-function benchmark(t::Vector{UInt8}, 
+function benchmark(t::Vector{T}, 
                    sa::Vector{UInt64},
                    isltype::BitVector, 
                    islms::BitVector,
                    bucketsizes::Vector{UInt64}, 
                    heads::Vector{UInt64}, 
-                   tails::Vector{UInt64};
-                   σ_in::Vector{UInt8}) 
+                   tails::Vector{UInt64},
+                   lmstempidx1::Vector{UInt64},
+                   lmstempidx2::Vector{UInt64},
+                   lmstempbool1::BitVector,
+                   lmstempbool2::BitVector,
+                   lmsnchar::UInt64;
+                   σ_in::Vector{T}) where {T<:Unsigned}
     # make sure sa is zeroed out to begin with
     # or else the traversal during induce sort will throw weird errors
     sa .= 0
@@ -462,6 +544,13 @@ function benchmark(t::Vector{UInt8},
     # now work backwards on the S-type
     MatchSequences.induceSortS!(t, sa, isltype, islms, bucketsizes, tails)
 
+    # the two args that matter are
+    # * lmstempidx2 : t_new
+    # * lmstempidx1 : pos_in_t
+    MatchSequences.makeSuffixArraySummary(t, sa, islms, 
+                                          lmstempidx1, lmstempidx2, 
+                                          lmstempbool1, lmstempbool2)
+
     return isltype, islms, heads, tails, bucketsizes, sa
 end
 
@@ -481,14 +570,29 @@ alpha = UInt8.(collect("\$ACGT"))
 t = UInt8.(StatsBase.sample(alpha, 100_000))
 t = UInt8.(StatsBase.sample(alpha, 50))
 
+alpha = UInt8.(collect("\$ACGT"))
+t = UInt8.(StatsBase.sample(alpha, 100_000))
+
+
 alpha = UInt8.(collect("abcdefg"))
 t = UInt8.(collect("cabbage"))
+t = UInt8.(collect("baabaabac"))
+t = UInt8.(collect("baabaabacbaabaabac"))
 
 l_vec = BitArray{1}(undef, length(t) + 1)
 lms_vec = BitArray{1}(undef, length(t) + 1)
 out_vec = Vector{UInt64}(undef, length(alpha))
 heads = Vector{UInt64}(undef, length(alpha))
 tails = Vector{UInt64}(undef, length(alpha))
+
+numlms = UInt64(sum(MatchSequences.suffixIsLType(t) |> MatchSequences.suffixIsLMS))
+
+# allocate the islms_subvec
+lms_subvec1 =  Vector{UInt64}(undef, numlms)
+lms_subvec2 =  similar(lms_subvec1)
+
+lms_boolvec1 = BitArray{1}(undef, length(t) + 1)
+lms_boolvec2 = BitArray{1}(undef, numlms)
 
 # allocate a vector for the suffix array
 sa = Vector{UInt64}(undef, length(t) + 1)
@@ -500,7 +604,9 @@ col = sort(collect(values(alpha_to_col)))
 # map to t to t′
 t′ = map(x -> alpha_to_col[x], t)
 
-out = MatchSequences.benchmark(t′, sa, l_vec, lms_vec, out_vec, heads, tails; σ_in = col);
+out = MatchSequences.benchmark(t′, sa, l_vec, lms_vec, out_vec, heads, tails,
+                               lms_subvec1, lms_subvec2, 
+                               lms_boolvec1, lms_boolvec2, numlms; σ_in = col);
 
 a,b,c,d,e,f = map(x -> Int.(x), out)
 
@@ -508,14 +614,24 @@ println("_" * join(repeat.(Char.(alpha), e)) * "\n"
         * join(ifelse.(isone.(a[f]), "L" , "S")) * "\n"
         * join(ifelse.(isone.(b[f]), "^" , " ")) * "\n")
 
-BenchmarkTools.@btime MatchSequences.benchmark($t′, $sa, $l_vec, $lms_vec, $out_vec, $heads, $tails; σ_in = $col);
+BenchmarkTools.@btime MatchSequences.benchmark($t′, $sa, $l_vec, $lms_vec, $out_vec, $heads, $tails,
+                                               $lms_subvec1, $lms_subvec2, 
+                                               $lms_boolvec1, $lms_boolvec2,
+                                               $numlms; σ_in = $col);
+
+@profilehtml  for i in 1:1000
+       MatchSequences.benchmark(t′, sa, l_vec, lms_vec, out_vec, heads, tails,
+                                             lms_subvec1, lms_subvec2,
+                                             lms_boolvec1, lms_boolvec2, numlms; σ_in = col);
+end
 
 import SuffixArrays
 SuffixArrays.suffixsort(t′)
 
 BenchmarkTools.@btime SuffixArrays.suffixsort($t′);
+
 cabbage   39.200 μs (0 allocations: 0 bytes)
-100_000    2.746 ms (0 allocations: 0 bytes) (before recursion!)
-100_000    7.363 ms (22 allocations: 4.97 MiB) (suffix arrays - after recursion)
+100_000    3.652 ms (0 allocations: 0 bytes) (before recursion!)
+100_000    7.352 ms (22 allocations: 4.97 MiB)
 
 =#

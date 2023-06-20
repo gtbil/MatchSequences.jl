@@ -6,6 +6,7 @@ import StatProfilerHTML
 import Logging
 import Dates
 import TimerOutputs
+# import LoopVectorization
 
 include("bwt.jl")
 include("fm.jl")
