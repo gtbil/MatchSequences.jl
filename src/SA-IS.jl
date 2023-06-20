@@ -453,6 +453,8 @@ function makeSuffixArraySummary(t::Vector{T},
     # 1 - 1 = 0 position in the end
     tempbool2[1:1] .= 1
 
+    # instantiate a new variable, a view of the suffix array?
+    
     # make the vector showing where in the original string each of the LMS
     # suffixes comes from
     @views pos_in_t .= sa[t_new]
@@ -487,6 +489,12 @@ Space needed:
 * sa          - 64 bits × length of input
 * isltype     -  1 bit  × length of input
 * islms       -  1 bit  × length of input
+* lmsstempidx1- 64 bits × length of input
+* lmsstempidx2- 64 bits × length of input
+* tempbool1   -  1 bit  × length of input
+* tempbool2   -  1 bit  × length of input
+___________________________________________
+8 + 64 + 1 + 1 + 64 + 64 + 1 + 1 = 204 bits × length of input
 
 * bucketsizes - 64 bits × length of alphabet
 * heads       - 64 bits × length of alphabet
@@ -513,10 +521,28 @@ function benchmark(t::Vector{T},
                    lmstempbool1::BitVector,
                    lmstempbool2::BitVector,
                    lmsnchar::UInt64;
-                   σ_in::Vector{T}) where {T<:Unsigned}
+                   σ_in::Vector{T} = UInt8.(collect(1:4)),
+                   isbasecase::Bool = true) where {T<:Unsigned}
     # make sure sa is zeroed out to begin with
     # or else the traversal during induce sort will throw weird errors
-    sa .= 0
+    # zero out if this is our first iteration
+    if isbasecase
+        sa .= 0
+    end
+
+    # allocate a few new variables in the recursive case
+    # (can we avoid this?)
+    if length(bucketsizes) != length(σ_in)
+        bucketsizes = undef(UInt64, length(σ_in))
+    end
+
+    if length(heads) != length(σ_in)
+        heads = undef(UInt64, length(σ_in))
+    end
+
+    if length(tails) != length(σ_in)
+        tails = undef(UInt64, length(σ_in))
+    end
 
     # build the type map
     # islms is used as a temporary variable here
@@ -550,6 +576,20 @@ function benchmark(t::Vector{T},
     MatchSequences.makeSuffixArraySummary(t, sa, islms, 
                                           lmstempidx1, lmstempidx2, 
                                           lmstempbool1, lmstempbool2)
+
+    println(Int.(lmstempidx2))
+    println(Int.(lmstempidx1))
+
+    # make the summary suffix array?
+    # do we have this already?
+
+    # accurate LMSSort
+
+    # slot in the L-type suffixes next to the LMS suffixes
+    MatchSequences.induceSortL!(t, sa, isltype, islms, bucketsizes, heads)
+
+    # now work backwards on the S-type
+    MatchSequences.induceSortS!(t, sa, isltype, islms, bucketsizes, tails)
 
     return isltype, islms, heads, tails, bucketsizes, sa
 end
@@ -613,6 +653,11 @@ a,b,c,d,e,f = map(x -> Int.(x), out)
 println("_" * join(repeat.(Char.(alpha), e)) * "\n" 
         * join(ifelse.(isone.(a[f]), "L" , "S")) * "\n"
         * join(ifelse.(isone.(b[f]), "^" , " ")) * "\n")
+
+
+
+
+
 
 BenchmarkTools.@btime MatchSequences.benchmark($t′, $sa, $l_vec, $lms_vec, $out_vec, $heads, $tails,
                                                $lms_subvec1, $lms_subvec2, 
