@@ -518,8 +518,8 @@ function benchmark(t::Vector{T},
                    bucketsizes::Vector{UInt64}, 
                    heads::Vector{UInt64}, 
                    tails::Vector{UInt64},
-                   lmstempidx1::Vector{UInt64},
-                   lmstempidx2::Vector{UInt64},
+                   t_mapto::Vector{UInt64},
+                   t_new::Vector{UInt64},
                    lmstempbool1::BitVector;
                    σ_in::Vector{T} = UInt8.(collect(1:4))) where {T<:Unsigned}
     # make sure sa is zeroed out to begin with
@@ -572,14 +572,13 @@ function benchmark(t::Vector{T},
     # now work backwards on the S-type
     MatchSequences.induceSortS!(t, sa, isltype, islms, bucketsizes, tails)
 
-    # the two args that matter are
-    # * lmstempidx2 : t_new
-    # * lmstempidx1 : pos_in_t
     MatchSequences.makeSuffixArraySummary(t, sa, islms, 
-                                          lmstempidx1, lmstempidx2, 
+                                          t_mapto, t_new, 
                                           lmstempbool1,
                                           startlms, numlms)
     # now unwind!
+    println(join(t_mapto, " "))
+    println(join(t_new, " "))
 
     # make the summary suffix array?
     # do we have this already?
