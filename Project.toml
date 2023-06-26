@@ -21,6 +21,7 @@ SuffixArrays = "24f65c1e-0a10-5d3d-8a1f-a83399f3fced"
 TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
 [compat]
+RawArray = "0.1"
 julia = "1"
 
 [extras]
