@@ -41,6 +41,7 @@ class FmCheckpoints(object):
         return self.cps[c][i // self.cpIval] + nocc
 
         class FmIndex():
+            pass
         ''' O(m) size FM Index, where checkpoints and suffix array samples are
             spaced O(1) elements apart.  Queries like count() and range() are
             O(n) where n is the length of the query.  Finding all k
