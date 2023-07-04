@@ -8,7 +8,7 @@ Base.IteratorSize(::Findall) = Base.SizeUnknown()
 Base.eltype(x::Findall) = typeof(firstindex(x.itr))
 
 function Base.iterate(x::Findall, current=firstindex(x.itr))
-	next = findnext(x.itr, current)
+	local next = findnext(x.itr, current)
 	isnothing(next) && return nothing
 	return (next, next + oneunit(next))
 end
@@ -40,7 +40,7 @@ end
 # this version should be free of allocations
 
 """
-    charBeforeIsSame!(t, issame)
+charBeforeIsSame!(t, issame)
 
 Helper function. Returns a BitVector that is `length(t) + 1` long.
 
@@ -183,8 +183,8 @@ function suffixIsLMSEqual(t::Vector{T},
     end
 
     # find the next left-most s-type for each offset
-    next_a = findnext(islms, offset_a + 1) - 1
-    next_b = findnext(islms, offset_b + 1) - 1
+    local next_a = findnext(islms, offset_a + 1) - 1
+    local next_b = findnext(islms, offset_b + 1) - 1
 
     # return if they are not the same length
     if (offset_a - next_a) != (offset_b - next_b)
@@ -376,10 +376,6 @@ function induceSortL!(t::Vector{T},
 
     # iterate along the true values in islms (no allocations?)
     # until we reach the empty string
-    # solution from here
-    # @views for idx in Iterators.map(first, Iterators.filter(last, pairs(isltype[1:(end-1)] .& islms[2:end])))
-    # for (idx_sa, idx_t) in pairs(sa)
-    # TODO : we need to try to improve this....
     for idx_t in sa
         @views if idx_t > 1 && isltype[idx_t-1]
             sa[heads[t[idx_t-1]]:heads[t[idx_t-1]]] .= idx_t - 1
@@ -520,76 +516,75 @@ function benchmark(t::Vector{T},
                    tails::Vector{UInt64},
                    t_mapto::Vector{UInt64},
                    t_new::Vector{UInt64},
-                   lmstempbool1::BitVector;
+                   lmstempbool1::BitVector,
+                   ranges::Vector{UnitRange};
                    σ_in::Vector{T} = UInt8.(collect(1:4))) where {T<:Unsigned}
     # make sure sa is zeroed out to begin with
     # or else the traversal during induce sort will throw weird errors
     # zero out if this is our first iteration
     sa .= 0
+    iter = 1
 
-    # allocate a few new variables in the recursive case
-    # (can we avoid this?)
-    #=
-    if length(bucketsizes) != length(σ_in)
-        bucketsizes = undef(UInt64, length(σ_in))
+    # repeat this process until we reach the bottom of the recursion
+    # since we doing this as a flat loop, we will track how far along we are
+    # with the iter indictor
+
+    # the first pass is different, since it is the only one that operates
+    # directly on t
+
+    # length(ranges) is precomputer as ceil(log2(length(t)))
+    while iter <= length(ranges)
+        # build the type map
+        # islms is used as a temporary variable here
+        # for tracking if adjacent symbols are equal
+        MatchSequences.suffixIsLType!(t , islms, isltype)
+
+        # determine which suffixes are LMS
+        # use the type vector to find the left-most S-type suffixes
+        MatchSequences.suffixIsLMS!(isltype, islms)
+
+        # set these into ranges
+        ranges[iter:iter] .= UnitRange(UInt64(1), UInt64(sum(islms)))
+
+        # get the sizes of each bucket
+        MatchSequences.findBucketSizes!(t, bucketsizes; alphabet = σ_in)
+
+        # then find their heads and tails
+        # MatchSequences.findBucketHeads!(bucketsizes, heads)
+        MatchSequences.findBucketTails!(bucketsizes, tails)
+
+        # insert all the LMS suffixes into approximately the right place
+        # in the suffix array
+        MatchSequences.guessLMSSort!(t, sa, islms, tails)
+
+        # slot in the L-type suffixes next to the LMS suffixes
+        MatchSequences.induceSortL!(t, sa, isltype, islms, bucketsizes, heads)
+
+        # now work backwards on the S-type
+        MatchSequences.induceSortS!(t, sa, isltype, islms, bucketsizes, tails)
+
+        MatchSequences.makeSuffixArraySummary(t, sa, islms, 
+                                            t_mapto, t_new, 
+                                            lmstempbool1,
+                                            startlms, numlms)
+        # now unwind!
+        println(join(t_mapto, " "))
+        println(join(t_new, " "))
+        
+        iter += 1
+        # accurate LMSSort
+        break
     end
 
-    if length(heads) != length(σ_in)
-        heads = undef(UInt64, length(σ_in))
+    # now do induce sort n times
+    while iter >= 1
+            # slot in the L-type suffixes next to the LMS suffixes
+        MatchSequences.induceSortL!(t, sa, isltype, islms, bucketsizes, heads)
+
+        # now work backwards on the S-type
+        MatchSequences.induceSortS!(t, sa, isltype, islms, bucketsizes, tails)
+        break
     end
-
-    if length(tails) != length(σ_in)
-        tails = undef(UInt64, length(σ_in))
-    end=#
-
-    # build the type map
-    # islms is used as a temporary variable here
-    # for tracking if adjacent symbols are equal
-    MatchSequences.suffixIsLType!( t , islms, isltype )
-
-    # determine which suffixes are LMS
-    # use the type vector to find the left-most S-type suffixes
-    MatchSequences.suffixIsLMS!( isltype, islms )
-
-    # save the number of LMS suffixes
-    startlms = zero(UInt64)
-    numlms = UInt64(sum(islms))
-
-    # get the sizes of each bucket
-    MatchSequences.findBucketSizes!(t, bucketsizes; alphabet = σ_in)
-
-    # then find their heads and tails
-    # MatchSequences.findBucketHeads!(bucketsizes, heads)
-    MatchSequences.findBucketTails!(bucketsizes, tails)
-
-    # insert all the LMS suffixes into approximately the right place
-    # in the suffix array
-    MatchSequences.guessLMSSort!(t, sa, islms, tails)
-
-    # slot in the L-type suffixes next to the LMS suffixes
-    MatchSequences.induceSortL!(t, sa, isltype, islms, bucketsizes, heads)
-
-    # now work backwards on the S-type
-    MatchSequences.induceSortS!(t, sa, isltype, islms, bucketsizes, tails)
-
-    MatchSequences.makeSuffixArraySummary(t, sa, islms, 
-                                          t_mapto, t_new, 
-                                          lmstempbool1,
-                                          startlms, numlms)
-    # now unwind!
-    println(join(t_mapto, " "))
-    println(join(t_new, " "))
-
-    # make the summary suffix array?
-    # do we have this already?
-
-    # accurate LMSSort
-
-    # slot in the L-type suffixes next to the LMS suffixes
-    MatchSequences.induceSortL!(t, sa, isltype, islms, bucketsizes, heads)
-
-    # now work backwards on the S-type
-    MatchSequences.induceSortS!(t, sa, isltype, islms, bucketsizes, tails)
 
     return isltype, islms, heads, tails, bucketsizes, sa
 end
@@ -624,6 +619,7 @@ lms_vec = BitArray{1}(undef, length(t) + 1)
 out_vec = Vector{UInt64}(undef, length(alpha))
 heads = Vector{UInt64}(undef, length(alpha))
 tails = Vector{UInt64}(undef, length(alpha))
+slices = Vector{UnitRange}(undef, ceil(Int64, log2(length(t))))
 
 numlms = UInt64(sum(MatchSequences.suffixIsLType(t) |> MatchSequences.suffixIsLMS))
 
@@ -645,7 +641,7 @@ t′ = map(x -> alpha_to_col[x], t)
 
 out = MatchSequences.benchmark(t′, sa, l_vec, lms_vec, out_vec, heads, tails,
                                lms_subvec1, lms_subvec2, 
-                               lms_boolvec1; σ_in = col);
+                               lms_boolvec1, slices; σ_in = col);
 
 a,b,c,d,e,f = map(x -> Int.(x), out)
 
