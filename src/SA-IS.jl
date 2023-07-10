@@ -32,7 +32,7 @@ function charBeforeIsSame(t::Vector{T})::BitVector where {T<:Unsigned}
     # create an un-initialized bitvector
     issame = BitArray{1}(undef, length(t) + 1)
 
-    charBeforeIsSame!(t, issame)
+    charBeforeIsSame!(t, issame, UnitRange(UInt64(1), UInt64(length(t)+1)))
 
     return issame
 end
@@ -47,19 +47,21 @@ Helper function. Returns a BitVector that is `length(t) + 1` long.
 # Arguments:
 * `t::Vector{UInt8}`  : Vector of UInt8 characters.
 * `issame::BitVector` : BitVector to store the output in (`undef` is OK)
+* `indexes::UnitRange{UInt64}` : Range of indexes to operate on.
 """
 function charBeforeIsSame!(t::Vector{T}, 
-                           issame::BitVector)::BitVector where {T<:Unsigned}
+                           issame::BitVector,
+                           indexes::UnitRange{UInt64})::BitVector where {T<:Unsigned}
 
     # set the first value to be false (it cannot be equal to the substring 
     # before it)
-    issame[1:1] .= 0
+    issame[indexes.start:indexes.start] .= 0
 
     # use this weird slicing syntax to avoid any allocations
-    issame[2:length(t)] .= view(t, 2:length(t)) .== view(t, 1:(length(t)-1))
+    issame[(indexes.start + 1):(indexes.stop - 1)] .= view(t, (indexes.start + 1):(indexes.stop - 1)) .== view(t, (indexes.start):(indexes.stop - 2))
 
     # set the empty string to always be not equal to char before it
-    issame[end:end] .= 0
+    issame[indexes.stop:indexes.stop] .= 0
 
     return issame
 end
@@ -75,7 +77,7 @@ function suffixIsLType(t::Vector{T})::BitVector where {T<:Unsigned}
     issame = BitArray{1}(undef, length(t) + 1)
     isltype = BitArray{1}(undef, length(t) + 1)
 
-    suffixIsLType!(t, issame, isltype)
+    suffixIsLType!(t, issame, isltype, UnitRange(UInt64(1), UInt64(length(t)+1)))
 
     return isltype
 end
@@ -99,23 +101,29 @@ Returns a BitVector that is `length(t) + 1` long.
 """
 function suffixIsLType!(t::Vector{T}, 
                         issame::BitVector,
-                        isltype::BitVector)::BitVector where {T<:Unsigned}
-    charBeforeIsSame!(t, issame)
+                        isltype::BitVector,
+                        indexes::UnitRange{UInt64})::BitVector where {T<:Unsigned}
+    charBeforeIsSame!(t, issame, indexes)
+
+    # ? local xt = view(t, indexes.start:indexes.stop)
+    local xissame = view(issame, indexes)
+    local xisltype = view(isltype, indexes)
 
     # we know a character must be L type if it is larger than the character
     # immediately to its right
     # so we can reliably mark these as L type substrings
-    @views isltype[1:(length(t)-1)] .= t[1:(length(t)-1)] .> t[2:(length(t))]
-    
+    # @views isltype[1:(length(t)-1)] .= t[1:(length(t)-1)] .> t[2:(length(t))]
+    @views xisltype[1:(end - 2)] .= t[1:(end - 1)] .> t[2:end]
+
     # the last character before the empty character must be L type
-    isltype[length(t):length(t)] .= 1
+    xisltype[(end-1):(end-1)] .= 1
 
     # the empty character is guaranteed to be S type
-    isltype[end:end] .= 0
+    xisltype[end:end] .= 0
 
     # now move our way up same_vec, and perform the same ops as we go
-    for i in length(t):-1:1
-        @views isltype[i:i] .= isltype[i] || (issame[i+1] && (isltype[(i+1)]))
+    for i in (length(indexes) - 1):-1:1
+        @views xisltype[i:i] .= xisltype[i] || (xissame[i+1] && (xisltype[(i+1)]))
     end
 
     return isltype
@@ -127,7 +135,7 @@ A non-modifying version of `suffixIsLMS!`.
 function suffixIsLMS(isltype::BitVector)::BitVector
     islms = BitArray{1}(undef, length(isltype))
 
-    suffixIsLMS!(isltype, islms)
+    suffixIsLMS!(isltype, islms, UnitRange(UInt64(1), UInt64(length(isltype))))
 
     return islms
 end
@@ -142,17 +150,20 @@ Given a BitVector indicating if each suffix is a left-most S-type or not.
 * `islms::BitVector`     : BitVector to store the output in.
 """
 function suffixIsLMS!(isltype::BitVector,
-                      islms::BitVector)::BitVector
+                      islms::BitVector,
+                      indexes::UnitRange{UInt64})::BitVector
+    local xisltype = view(isltype, indexes)
+    local xislms = view(islms, indexes)
 
     # the first suffix will never be a left-most S-type
-    islms[1:1] .= 0
+    xislms[1:1] .= 0
 
     # a suffix is a left-most S-type if it is an S-type and the character before
     # it is an L-type
     # the syntax below says we will set the output vector to true if the 
     # previous character is L-type (true in the first part before `&.`,
     # and the current character is S-type (broadcasted not with .~).
-    @views islms[2:end] .= isltype[1:(end-1)] .& .~ isltype[2:(end)]
+    @views xislms[2:end] .= xisltype[1:(end-1)] .& .~ xisltype[2:end]
     
     return islms
 end
@@ -207,7 +218,9 @@ function findBucketSizes(t::Vector{T};
                          alphabet=σ::Vector{T})::Vector{UInt64} where {T<:Unsigned}
     bucketsizes = Vector{UInt64}(undef, length(alphabet))
 
-    findBucketSizes!(t, bucketsizes; alphabet=alphabet)
+    findBucketSizes!(t, bucketsizes,
+                     UnitRange(one(UInt64), UInt64(length(t))),
+                     UnitRange(one(UInt64), UInt64(length(alphabet))))
 
     return bucketsizes
 end
@@ -226,20 +239,24 @@ it, using `count!`
                                   alphabet.
 """
 function findBucketSizes!(t::Vector{T}, 
-                          bucketsizes::Vector{UInt64}; 
-                          alphabet=σ::Vector{T})::Vector{UInt64} where {T<:Unsigned}
+                          bucketsizes::Vector{UInt64},
+                          indexes_t::UnitRange{UInt64},
+                          indexes_alpha::UnitRange{UInt64})::Vector{UInt64} where {T<:Unsigned}
 
     # make a bitmask for each character, and then sum it
     # this way, the bitmask is consumed as it is produced
+    local xt = view(t, indexes_t.start:(indexes_t.stop - 1))
+    local xbucketsizes = view(bucketsizes, indexes_alpha)
     
-    for ch in alphabet
-        @views count!(==(ch), 
-                      bucketsizes[ch:ch],
-                      t)
+    for ch in one(UInt64):length(indexes_alpha)
+        count!(==(ch),
+               view(xbucketsizes, ch:ch),
+               xt)
     end
 
     return bucketsizes
 end
+
 
 """
 A non-modifying version of `findBucketHeads`.
@@ -247,7 +264,7 @@ A non-modifying version of `findBucketHeads`.
 function findBucketHeads(bucketsizes::Vector{UInt64})::Vector{UInt64}
     heads = Vector{UInt64}(undef, length(bucketsizes))
     
-    findBucketHeads!(bucketsizes, heads)
+    findBucketHeads!(bucketsizes, heads, 1:length(bucketsizes))
 
     return heads
 end
@@ -264,17 +281,21 @@ need to be trimmed out by the caller.
 * `heads::Vector{UInt64}``      : Vector to store the output in.
 """
 function findBucketHeads!(bucketsizes::Vector{UInt64},
-                          heads::Vector{UInt64})::Vector{UInt64}
+                          heads::Vector{UInt64},
+                          indexes_alpha::UnitRange{UInt64})::Vector{UInt64}
+    local xbucketsizes = view(bucketsizes, indexes_alpha)
+    local xheads = view(heads, indexes_alpha)
+
     # set the first value to be 0 (will be dealt with later)
-    heads[1:1] .= 0
+    xheads[1:1] .= 0
 
     # replace all the following values with the cumulative sum
     # indicating how many characters are in the string sorted up through
     # this point
-    @views cumsum!(heads[2:end], bucketsizes[1:(end-1)])
+    @views cumsum!(xheads[2:end], xbucketsizes[1:(end-1)])
 
     # add two to each, since place [1] will always be the empty string
-    heads .+= 2
+    xheads .+= 2
 
     return heads
 end
@@ -285,7 +306,7 @@ A non-modifying version of `findBucketTails`.
 function findBucketTails(bucketsizes::Vector{UInt64})::Vector{UInt64}
     tails = Vector{UInt64}(undef, length(bucketsizes))
     
-    findBucketTails!(bucketsizes, tails)
+    findBucketTails!(bucketsizes, tails, 1:length(bucketsizes))
     
     return tails
 end
@@ -302,13 +323,17 @@ need to be trimmed out by the caller.
 * `tails::Vector{UInt64}``      : Vector to store the output in.
 """
 function findBucketTails!(bucketsizes::Vector{UInt64},
-                          tails::Vector{UInt64})::Vector{UInt64}
+                          tails::Vector{UInt64},
+                          indexes_alpha::UnitRange{UInt64})::Vector{UInt64}
+    local xbucketsizes = view(bucketsizes, indexes_alpha)
+    local xtails = view(tails, indexes_alpha)
+
     # count the number of characters seen up until x point
-    @views cumsum!(tails, bucketsizes)
+    cumsum!(xtails, xbucketsizes)
 
     # add one to each, since place [1] will always be the empty string
     # and we need to account for this
-    tails .+= 1
+    xtails .+= 1
 
     return tails
 end
@@ -330,17 +355,24 @@ indexes for those that are true.
 function guessLMSSort!(t::Vector{T}, 
                        sa::Vector{UInt64},
                        islms::BitVector, 
-                       tails::Vector{UInt64})::Vector{UInt64} where {T<:Unsigned}
+                       tails::Vector{UInt64},
+                       indexes_t::UnitRange{UInt64},
+                       indexes_alpha::UnitRange{UInt64})::Vector{UInt64} where {T<:Unsigned}
+    # make locals for masking
+    local xt = view(t, indexes_t.start:(indexes_t.stop - 1))
+    local xsa = view(sa, indexes_t)
+    local xislms = view(islms, indexes_t)
+    local xtails = view(tails, indexes_alpha)
 
     # set the empty string to be the first suffix
-    sa[1:1] .= length(t) + 1
+    xsa[1:1] .= length(xt) + 1
 
     # iterate along the true values in islms (no allocations?)
     # until we reach the empty string
     # solution from here
-    @views for idx in Findall(islms[1:(end-1)])
-        sa[tails[t[idx]]:tails[t[idx]]] .= idx
-        tails[t[idx]:t[idx]] .-= 1
+    @views for idx in Findall(xislms[1:(end-1)])
+        xsa[xtails[xt[idx]]:xtails[xt[idx]]] .= idx
+        xtails[xt[idx]:xt[idx]] .-= 1
     end
 
     #=
@@ -370,16 +402,20 @@ function induceSortL!(t::Vector{T},
                       isltype::BitVector,
                       islms::BitVector,
                       bucketsizes::Vector{UInt64}, 
-                      heads::Vector{UInt64})::Vector{UInt64} where {T<:Unsigned}
+                      heads::Vector{UInt64},
+                      indexes_t::UnitRange{UInt64},
+                      indexes_alpha::UnitRange{UInt64})::Vector{UInt64} where {T<:Unsigned}
     # reset bucket heads
-    findBucketHeads!(bucketsizes, heads)
+    findBucketHeads!(bucketsizes, heads, indexes_alpha)
+    local xsa = view(sa, indexes_t)
+    local xheads = view(heads, indexes_alpha)
 
     # iterate along the true values in islms (no allocations?)
     # until we reach the empty string
-    for idx_t in sa
+    for idx_t in xsa
         @views if idx_t > 1 && isltype[idx_t-1]
-            sa[heads[t[idx_t-1]]:heads[t[idx_t-1]]] .= idx_t - 1
-            heads[t[idx_t-1]:t[idx_t-1]] .+= 1
+            xsa[xheads[t[idx_t-1]]:xheads[t[idx_t-1]]] .= idx_t - 1
+            xheads[t[idx_t-1]:t[idx_t-1]] .+= 1
         end
     end
                        
@@ -402,14 +438,19 @@ function induceSortS!(t::Vector{T},
                       isltype::BitVector,
                       islms::BitVector, 
                       bucketsizes::Vector{UInt64},
-                      tails::Vector{UInt64})::Vector{UInt64} where {T<:Unsigned}
+                      tails::Vector{UInt64},
+                      indexes_t::UnitRange{UInt64},
+                      indexes_alpha::UnitRange{UInt64})::Vector{UInt64} where {T<:Unsigned}
     # reset bucket tails
-    findBucketTails!(bucketsizes, tails)
+    findBucketTails!(bucketsizes, tails, indexes_alpha)
 
-    for idx_t in Iterators.reverse(sa)
+    local xsa = view(sa, indexes_t)
+    local xtails = view(tails, indexes_alpha)
+
+    for idx_t in Iterators.reverse(xsa)
         @views if idx_t > 1 && ~ isltype[idx_t-1]
-            sa[tails[t[idx_t-1]]:tails[t[idx_t-1]]] .= idx_t - 1
-            tails[t[idx_t-1]:t[idx_t-1]] .-= 1
+            xsa[xtails[t[idx_t-1]]:xtails[t[idx_t-1]]] .= idx_t - 1
+            xtails[t[idx_t-1]:t[idx_t-1]] .-= 1
         end
     end
                        
@@ -432,34 +473,33 @@ function makeSuffixArraySummary(t::Vector{T},
                                 pos_in_t::Vector{UInt64},
                                 t_new::Vector{UInt64},
                                 tempbool1::BitVector,
-                                offset::UInt64,
-                                nlms::UInt64) where {T<:Unsigned}
+                                idx_range::UnitRange{UInt64}) where {T<:Unsigned}
     # iterate over the suffix array
     # and determine if adjacent LMS suffixes are equal
     # make a vector that is the same length as the NUMBER of LMS suffixes
     # this will be strided along the indexes of the suffixarray
     # determine which sa indexes are LMS
     for (idx, v) in enumerate(Findall(islms))
-        t_new[(idx + offset):(idx + offset)] .= v
+        t_new[(idx + idx_range.start - 1):(idx + idx_range.start - 1)] .= v
     end
 
     # the first index will always correspond to the empty string
     # so it will always be a new suffix
     # we are setting this to zero because it will be at the (preceding)
     # 1 - 1 = 0 position in the end
-    tempbool1[(1 + offset):(1 + offset)] .= 1
+    tempbool1[idx_range] .= 1
 
     # instantiate a new variable, a view of the suffix array?
     
     # make the vector showing where in the original string each of the LMS
     # suffixes comes from
-    @views pos_in_t[(1 + offset):(offset + nlms)] .= sa[t_new[(1 + offset):(offset + nlms)]]
+    @views pos_in_t[idx_range] .= sa[t_new[idx_range]]
 
     # now do to the equality check for adjacent LMS suffixes
     @views for (idx, (off1, off2)) in
-        enumerate(zip(pos_in_t[(1 + offset):(offset + nlms - 2)],
-                      pos_in_t[(2 + offset):(offset + nlms - 1)]))
-        tempbool1[(offset + idx + 1):(offset + idx + 1)] .= ~ suffixIsLMSEqual(t, islms, off1, off2)
+        enumerate(zip(pos_in_t[idx_range.start:(idx_range.stop - 1)],
+                      pos_in_t[(idx_range.start + 1):idx_range.stop]))
+        tempbool1[(idx + idx_range.start):(idx + idx_range.start)] .= ~ suffixIsLMSEqual(t, islms, off1, off2)
     end
 
     # make a vector to output the summary string
@@ -468,8 +508,8 @@ function makeSuffixArraySummary(t::Vector{T},
     # TODO : parameterize this on the number of LMS suffixes
 
     # finally, do the actual reindexing
-    cumsum!(view(t_new, (1 + offset):(offset + nlms)), 
-            view(tempbool1, (1 + offset):(offset + nlms)))
+    cumsum!(view(t_new, idx_range), 
+            view(tempbool1, idx_range))
 
     # need to return:
     # the summary string, which is the string of the reindexed LMS substrings
@@ -517,13 +557,18 @@ function benchmark(t::Vector{T},
                    t_mapto::Vector{UInt64},
                    t_new::Vector{UInt64},
                    lmstempbool1::BitVector,
-                   ranges::Vector{UnitRange};
+                   ranges_sa::Vector{UnitRange{UInt64}},
+                   ranges_alpha::Vector{UnitRange{UInt64}};
                    σ_in::Vector{T} = UInt8.(collect(1:4))) where {T<:Unsigned}
     # make sure sa is zeroed out to begin with
     # or else the traversal during induce sort will throw weird errors
     # zero out if this is our first iteration
     sa .= 0
     iter = 1
+
+    # set the initial alphabet size and position in sa
+    ranges_alpha[iter] = UnitRange(UInt64(1), UInt64(length(σ_in)))
+    ranges_sa[iter] = UnitRange(UInt64(1), UInt64(length(t) + 1))
 
     # repeat this process until we reach the bottom of the recursion
     # since we doing this as a flat loop, we will track how far along we are
@@ -532,44 +577,46 @@ function benchmark(t::Vector{T},
     # the first pass is different, since it is the only one that operates
     # directly on t
 
-    # length(ranges) is precomputer as ceil(log2(length(t)))
-    while iter <= length(ranges)
+    # islms and isltype will need to keep getting extended
+    # as the recursive stack builds
+
+    # length(ranges) is precomputed as ceil(log2(length(t)))
+    while iter <= length(ranges_sa)
         # build the type map
         # islms is used as a temporary variable here
         # for tracking if adjacent symbols are equal
-        MatchSequences.suffixIsLType!(t , islms, isltype)
+        MatchSequences.suffixIsLType!(t, islms, isltype, ranges_sa[iter])
 
         # determine which suffixes are LMS
         # use the type vector to find the left-most S-type suffixes
-        MatchSequences.suffixIsLMS!(isltype, islms)
-
-        # set these into ranges
-        ranges[iter:iter] .= UnitRange(UInt64(1), UInt64(sum(islms)))
+        MatchSequences.suffixIsLMS!(isltype, islms, ranges_sa[iter])
 
         # get the sizes of each bucket
-        MatchSequences.findBucketSizes!(t, bucketsizes; alphabet = σ_in)
+        MatchSequences.findBucketSizes!(t, bucketsizes, ranges_sa[iter], ranges_alpha[iter])
 
         # then find their heads and tails
         # MatchSequences.findBucketHeads!(bucketsizes, heads)
-        MatchSequences.findBucketTails!(bucketsizes, tails)
+        MatchSequences.findBucketTails!(bucketsizes, tails, ranges_alpha[iter])
 
         # insert all the LMS suffixes into approximately the right place
         # in the suffix array
-        MatchSequences.guessLMSSort!(t, sa, islms, tails)
+        MatchSequences.guessLMSSort!(t, sa, islms, tails, ranges_sa[iter], ranges_alpha[iter])
 
         # slot in the L-type suffixes next to the LMS suffixes
-        MatchSequences.induceSortL!(t, sa, isltype, islms, bucketsizes, heads)
+        MatchSequences.induceSortL!(t, sa, isltype, islms, bucketsizes, heads, ranges_sa[iter], ranges_alpha[iter])
 
         # now work backwards on the S-type
-        MatchSequences.induceSortS!(t, sa, isltype, islms, bucketsizes, tails)
+        MatchSequences.induceSortS!(t, sa, isltype, islms, bucketsizes, tails, ranges_sa[iter], ranges_alpha[iter])
 
+        #=
         MatchSequences.makeSuffixArraySummary(t, sa, islms, 
                                             t_mapto, t_new, 
                                             lmstempbool1,
-                                            startlms, numlms)
+                                            ranges_sa[iter])
         # now unwind!
-        println(join(t_mapto, " "))
-        println(join(t_new, " "))
+        #println(join(t_mapto, " "))
+        #println(join(t_new, " "))
+
         
         iter += 1
         # accurate LMSSort
@@ -583,7 +630,9 @@ function benchmark(t::Vector{T},
 
         # now work backwards on the S-type
         MatchSequences.induceSortS!(t, sa, isltype, islms, bucketsizes, tails)
+                =#
         break
+        
     end
 
     return isltype, islms, heads, tails, bucketsizes, sa
@@ -614,23 +663,28 @@ t = UInt8.(collect("cabbage"))
 t = UInt8.(collect("baabaabac"))
 t = UInt8.(collect("baabaabacbaabaabac"))
 
-l_vec = BitArray{1}(undef, length(t) + 1)
-lms_vec = BitArray{1}(undef, length(t) + 1)
-out_vec = Vector{UInt64}(undef, length(alpha))
-heads = Vector{UInt64}(undef, length(alpha))
-tails = Vector{UInt64}(undef, length(alpha))
-slices = Vector{UnitRange}(undef, ceil(Int64, log2(length(t))))
+l_vec = BitArray{1}(undef, (length(t) + 1)*2)
+lms_vec = BitArray{1}(undef, (length(t) + 1)*2)
+
+# this is how deep the "recursive" calls can go in worst case"
+ceil_val = ceil(Int64, log2(length(t)))
+
+out_vec      = Vector{UInt64}(undef, length(alpha)^ceil_val)
+heads        = Vector{UInt64}(undef, length(alpha)^ceil_val)
+tails        = Vector{UInt64}(undef, length(alpha)^ceil_val)
+slices_sa    = Vector{UnitRange{UInt64}}(undef, ceil_val)
+slices_alpha = Vector{UnitRange{UInt64}}(undef, ceil_val)
 
 numlms = UInt64(sum(MatchSequences.suffixIsLType(t) |> MatchSequences.suffixIsLMS))
 
 # allocate the islms_subvec
-lms_subvec1 =  Vector{UInt64}(undef, length(t) + 1)
+lms_subvec1 =  Vector{UInt64}(undef, (length(t) + 1)*2)
 lms_subvec2 =  similar(lms_subvec1)
 
-lms_boolvec1 = BitArray{1}(undef, length(t) + 1)
+lms_boolvec1 = BitArray{1}(undef, (length(t) + 1)*2)
 
 # allocate a vector for the suffix array
-sa = Vector{UInt64}(undef, length(t) + 1)
+sa = Vector{UInt64}(undef, (length(t) + 1)*2)
 # use zeroes for now
 
 alpha_to_col = Dict{UInt8, UInt8}(ch => i for (i, ch) in enumerate(sort(alpha)))
@@ -641,20 +695,19 @@ t′ = map(x -> alpha_to_col[x], t)
 
 out = MatchSequences.benchmark(t′, sa, l_vec, lms_vec, out_vec, heads, tails,
                                lms_subvec1, lms_subvec2, 
-                               lms_boolvec1, slices; σ_in = col);
-
+                               lms_boolvec1, 
+                               slices_sa, slices_alpha; σ_in = col);
+#=
 a,b,c,d,e,f = map(x -> Int.(x), out)
 
 println("_" * join(repeat.(Char.(alpha), e)) * "\n" 
         * join(ifelse.(isone.(a[f]), "L" , "S")) * "\n"
         * join(ifelse.(isone.(b[f]), "^" , " ")) * "\n")
-
-
-
+=#
 
 BenchmarkTools.@btime MatchSequences.benchmark($t′, $sa, $l_vec, $lms_vec, $out_vec, $heads, $tails,
-                                               $lms_subvec1, $lms_subvec2, 
-                                               $lms_boolvec1; σ_in = $col);
+                               $lms_subvec1, $lms_subvec2, 
+                               $lms_boolvec1, $slices_sa, $slices_alpha; σ_in = $col);
 
 @profilehtml  for i in 1:1000
        MatchSequences.benchmark(t′, sa, l_vec, lms_vec, out_vec, heads, tails,
